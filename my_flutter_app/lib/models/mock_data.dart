@@ -8,6 +8,13 @@ class Tracker {
   final int signalStrength; // 0-100
   final DateTime lastSeen;
   final int? batteryLevel; // 0-100
+  
+  // BLE-specific fields
+  final int? rssi; // Raw RSSI in dBm
+  final double? rssiFiltered; // Kalman-filtered RSSI
+  final double? distance; // Estimated distance in meters
+  final String? serialNumber; // From device name parsing
+  final String? bleAddress; // MAC address
 
   Tracker({
     required this.id,
@@ -17,6 +24,11 @@ class Tracker {
     required this.signalStrength,
     required this.lastSeen,
     this.batteryLevel,
+    this.rssi,
+    this.rssiFiltered,
+    this.distance,
+    this.serialNumber,
+    this.bleAddress,
   });
 
   Tracker copyWith({
@@ -27,6 +39,11 @@ class Tracker {
     int? signalStrength,
     DateTime? lastSeen,
     int? batteryLevel,
+    int? rssi,
+    double? rssiFiltered,
+    double? distance,
+    String? serialNumber,
+    String? bleAddress,
   }) {
     return Tracker(
       id: id ?? this.id,
@@ -36,6 +53,11 @@ class Tracker {
       signalStrength: signalStrength ?? this.signalStrength,
       lastSeen: lastSeen ?? this.lastSeen,
       batteryLevel: batteryLevel ?? this.batteryLevel,
+      rssi: rssi ?? this.rssi,
+      rssiFiltered: rssiFiltered ?? this.rssiFiltered,
+      distance: distance ?? this.distance,
+      serialNumber: serialNumber ?? this.serialNumber,
+      bleAddress: bleAddress ?? this.bleAddress,
     );
   }
 }
@@ -84,11 +106,17 @@ class PendingTracker {
   final String deviceId;
   final int signalStrength;
   final DateTime discovered;
+  final String? serialNumber; // From device name parsing
+  final String? bleAddress; // MAC address
+  final int? rssi; // Raw RSSI in dBm
 
   PendingTracker({
     required this.deviceId,
     required this.signalStrength,
     required this.discovered,
+    this.serialNumber,
+    this.bleAddress,
+    this.rssi,
   });
 }
 

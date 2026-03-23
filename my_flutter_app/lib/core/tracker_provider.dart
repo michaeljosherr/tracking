@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:my_flutter_app/core/ble_service.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:uuid/uuid.dart';
 
 class TrackerProvider with ChangeNotifier {
   final List<Tracker> _trackers = List.from(mockTrackers);
   final List<Alert> _alerts = List.from(mockAlerts);
-  final List<PendingTracker> _pendingTrackers = List.from(mockPendingTrackers);
+  final List<PendingTracker> _pendingTrackers = [];
   final _uuid = const Uuid();
+  final _ble = BleService();
+
+  bool _isScanning = false;
 
   List<Tracker> get trackers => _trackers;
   List<Alert> get alerts => _alerts;
   List<PendingTracker> get pendingTrackers => _pendingTrackers;
+  bool get isScanning => _isScanning;
 
   List<Alert> get activeAlerts => _alerts.where((a) => !a.acknowledged).toList();
 
@@ -24,6 +29,35 @@ class TrackerProvider with ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  /// Scan for ESP32 Tracker devices via BLE
+  Future<void> scanForTrackers({Duration duration = const Duration(seconds: 5)}) async {
+    _isScanning = true;
+    notifyListeners();
+
+    try {
+      final scannedTrackers = await _ble.scanForTrackers(scanDuration: duration);
+      _pendingTrackers.clear();
+      _pendingTrackers.addAll(scannedTrackers);
+      notifyListeners();
+    } catch (e) {
+      print('[TrackerProvider] Error scanning: $e');
+    } finally {
+      _isScanning = false;
+      notifyListeners();
+    }
+  }
+
+  /// Stop BLE scanning
+  Future<void> stopScanning() async {
+    try {
+      await _ble.stopScan();
+    } catch (e) {
+      print('[TrackerProvider] Error stopping scan: $e');
+    }
+    _isScanning = false;
+    notifyListeners();
   }
 
   void renameTracker(String id, String newName) {
@@ -42,9 +76,16 @@ class TrackerProvider with ChangeNotifier {
     }
   }
 
+  /// Register a discovered BLE device as an active tracker
   void registerDevice(PendingTracker pendingTracker, String name) {
     // Generate a unique ID
     final newId = _uuid.v4();
+    
+    // Calculate distance from RSSI
+    final distance = pendingTracker.rssi != null 
+        ? BleService.calculateDistance(pendingTracker.rssi!)
+        : null;
+    
     final newTracker = Tracker(
       id: newId,
       deviceId: pendingTracker.deviceId,
@@ -53,6 +94,12 @@ class TrackerProvider with ChangeNotifier {
       signalStrength: pendingTracker.signalStrength,
       lastSeen: DateTime.now(),
       batteryLevel: 100, // Default for new registration
+      // BLE fields
+      rssi: pendingTracker.rssi,
+      rssiFiltered: pendingTracker.rssi?.toDouble(),
+      distance: distance,
+      serialNumber: pendingTracker.serialNumber,
+      bleAddress: pendingTracker.bleAddress,
     );
 
     // Remove from pending

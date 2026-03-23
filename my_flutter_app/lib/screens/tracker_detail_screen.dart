@@ -98,6 +98,10 @@ class TrackerDetailScreen extends StatelessWidget {
             const SizedBox(height: 24),
             _buildStatsGrid(tracker),
             const SizedBox(height: 32),
+            if (tracker.rssi != null || tracker.bleAddress != null) ...[
+              _buildBleDetailsCard(tracker),
+              const SizedBox(height: 32),
+            ],
             SizedBox(
               width: double.infinity,
               height: 48,
@@ -226,6 +230,68 @@ class TrackerDetailScreen extends StatelessWidget {
           Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
         ],
       ),
+    );
+  }
+
+  Widget _buildBleDetailsCard(Tracker tracker) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(LucideIcons.bluetooth, size: 20, color: Color(0xFF2563EB)),
+              SizedBox(width: 8),
+              Text('BLE Information', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Divider(color: const Color(0xFFE2E8F0), height: 1),
+          const SizedBox(height: 16),
+          if (tracker.serialNumber != null) ...[
+            _buildBleDetailRow('Serial Number', tracker.serialNumber!),
+            const SizedBox(height: 12),
+          ],
+          if (tracker.rssi != null) ...[
+            _buildBleDetailRow('RSSI', '${tracker.rssi} dBm'),
+            const SizedBox(height: 12),
+          ],
+          if (tracker.rssiFiltered != null) ...[
+            _buildBleDetailRow('RSSI (Filtered)', '${tracker.rssiFiltered?.toStringAsFixed(1)} dBm'),
+            const SizedBox(height: 12),
+          ],
+          if (tracker.distance != null) ...[
+            _buildBleDetailRow('Distance', '${tracker.distance?.toStringAsFixed(2)} m'),
+            const SizedBox(height: 12),
+          ],
+          if (tracker.bleAddress != null) ...[
+            _buildBleDetailRow('MAC Address', tracker.bleAddress!),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBleDetailRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 14, fontWeight: FontWeight.w500)),
+        Text(value, style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.w600)),
+      ],
     );
   }
 }

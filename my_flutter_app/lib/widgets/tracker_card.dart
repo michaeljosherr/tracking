@@ -201,6 +201,51 @@ class TrackerCard extends StatelessWidget {
                   minHeight: 8,
                 ),
               ),
+              // BLE Data Section
+              if (tracker.rssi != null || tracker.distance != null) ...[
+                const SizedBox(height: 16),
+                Divider(color: const Color(0xFFE2E8F0), height: 1),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('RSSI', style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w500)),
+                        const SizedBox(height: 4),
+                        Text(
+                          tracker.rssi != null ? '${tracker.rssi} dBm' : '-- dBm',
+                          style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text('Distance', style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w500)),
+                        const SizedBox(height: 4),
+                        Text(
+                          tracker.distance != null ? '${tracker.distance?.toStringAsFixed(2)} m' : '-- m',
+                          style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    if (tracker.serialNumber != null)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text('Serial', style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w500)),
+                          const SizedBox(height: 4),
+                          Text(
+                            tracker.serialNumber!,
+                            style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
