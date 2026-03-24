@@ -1,0 +1,21 @@
+# Workspace-level IDE files
+.idea/
+.vscode/
+*.code-workspace
+
+# OS noise
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary/log files
+*.log
+*.tmp
+*.temp
+*.cache
+
+# Local Flutter CLI snapshots
+devices.txt
+my_flutter_app/devices.txt
+my_flutter_app/emulators.txt
+my_flutter_app/running_devices.txt

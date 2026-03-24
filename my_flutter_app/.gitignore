@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local device/emulator snapshots
+devices.txt
+emulators.txt
+running_devices.txt
