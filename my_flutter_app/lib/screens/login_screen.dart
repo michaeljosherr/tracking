@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:my_flutter_app/core/auth_provider.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -17,12 +18,20 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
   Future<void> _handleSubmit() async {
+    HapticFeedback.lightImpact();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
+      HapticFeedback.vibrate();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter both email and password')),
+        SnackBar(
+          content: const Text('Please enter both email and password'),
+          backgroundColor: Colors.red.shade600,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+        ),
       );
       return;
     }
@@ -35,18 +44,37 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Login successful!')),
+          SnackBar(
+            content: const Text('Login successful!'),
+            backgroundColor: Colors.green.shade600,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 2),
+          ),
         );
         // The router will automatically redirect to '/' because AuthProvider notified listeners
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid email or password')),
+          SnackBar(
+            content: const Text('Invalid email or password'),
+            backgroundColor: Colors.red.shade600,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('An error occurred during login')),
+          SnackBar(
+            content: const Text('An error occurred during login'),
+            backgroundColor: Colors.red.shade600,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+          ),
         );
       }
     } finally {
@@ -146,6 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         controller: _emailController,
                         decoration: InputDecoration(
                           labelText: 'Email Address',
+                          floatingLabelBehavior: FloatingLabelBehavior.auto,
                           filled: true,
                           fillColor: const Color(0xFFF8FAFC),
                           border: OutlineInputBorder(
@@ -156,6 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(12),
                             borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
                           ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                         ),
                         keyboardType: TextInputType.emailAddress,
                         enabled: !_isLoading,
@@ -165,6 +195,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         controller: _passwordController,
                         decoration: InputDecoration(
                           labelText: 'Password',
+                          floatingLabelBehavior: FloatingLabelBehavior.auto,
                           filled: true,
                           fillColor: const Color(0xFFF8FAFC),
                           border: OutlineInputBorder(
@@ -184,6 +215,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               setState(() => _showPassword = !_showPassword);
                             },
                           ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                         ),
                         obscureText: !_showPassword,
                         enabled: !_isLoading,
@@ -222,9 +254,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: OutlinedButton(
                           onPressed: _isLoading ? null : () => _fillDemoCredentials('supervisor'),
                           style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            side: BorderSide(color: _isLoading ? const Color(0xFFE2E8F0) : const Color(0xFFCBD5E1)),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            foregroundColor: const Color(0xFF334155),
+                            foregroundColor: _isLoading ? const Color(0xFFCBD5E1) : const Color(0xFF334155),
                           ),
                           child: const Text('Use Supervisor Account'),
                         ),
@@ -236,9 +268,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: OutlinedButton(
                           onPressed: _isLoading ? null : () => _fillDemoCredentials('guide'),
                           style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            side: BorderSide(color: _isLoading ? const Color(0xFFE2E8F0) : const Color(0xFFCBD5E1)),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            foregroundColor: const Color(0xFF334155),
+                            foregroundColor: _isLoading ? const Color(0xFFCBD5E1) : const Color(0xFF334155),
                           ),
                           child: const Text('Use Guide Account'),
                         ),

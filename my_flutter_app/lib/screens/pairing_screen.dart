@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:my_flutter_app/core/tracker_provider.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
+import 'package:my_flutter_app/widgets/skeleton_loader.dart';
 
 class PairingScreen extends StatefulWidget {
   const PairingScreen({super.key});
@@ -72,34 +73,46 @@ class _PairingScreenState extends State<PairingScreen> {
   }
 
   Widget _buildScanningState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: const BoxDecoration(
-              color: Color(0xFFEFF6FF),
-              shape: BoxShape.circle,
-            ),
-            child: const Center(
-              child: SizedBox(
-                width: 40,
-                height: 40,
-                child: CircularProgressIndicator(strokeWidth: 3, color: Color(0xFF2563EB)),
+    return Column(
+      children: [
+        // Header
+        Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Scanning for Devices...', 
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+              const SizedBox(height: 8),
+              const Text('Looking for ESP32 trackers nearby', 
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+              const SizedBox(height: 12),
+              // Progress bar
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  minHeight: 4,
+                  backgroundColor: const Color(0xFFE2E8F0),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Colors.blue.shade400,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-          const SizedBox(height: 24),
-          const Text('Scanning for ESP32 Trackers...', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
-          const SizedBox(height: 8),
-          const Text('Ensure trackers are powered on and nearby.', style: TextStyle(color: Color(0xFF64748B))),
-          const SizedBox(height: 16),
-          const Text('Looking for devices with esp32_indiv_ prefix...', 
-            style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic)),
-        ],
-      ),
+        ),
+        // Skeleton loaders
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: 4,
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              return const SkeletonTrackerCard();
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -163,10 +176,23 @@ class _PairingScreenState extends State<PairingScreen> {
                         ? " • ${((tracker.rssi! + 100) * 2).clamp(0, 100).toInt()}% signal"
                         : "";
                     
-                    return Card(
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12), 
+                    return TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      duration: Duration(milliseconds: 300 + (100 * index)),
+                      curve: Curves.easeOut,
+                      builder: (context, value, child) {
+                        return Transform.translate(
+                          offset: Offset(0, 20 * (1 - value)),
+                          child: Opacity(
+                            opacity: value,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12), 
                         side: const BorderSide(color: Color(0xFFE2E8F0))
                       ),
                       child: ListTile(
@@ -185,6 +211,7 @@ class _PairingScreenState extends State<PairingScreen> {
                           child: const Text('Connect'),
                         ),
                       ),
+                    ),
                     );
                   },
                 ),

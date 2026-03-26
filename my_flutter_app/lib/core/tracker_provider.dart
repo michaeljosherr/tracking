@@ -122,4 +122,17 @@ class TrackerProvider with ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// Refresh tracker data (simulate data update from BLE)
+  void refreshTrackers() {
+    // Simulate updating tracker statuses
+    for (var i = 0; i < _trackers.length; i++) {
+      final tracker = _trackers[i];
+      // Update last seen timestamp
+      _trackers[i] = tracker.copyWith(
+        lastSeen: DateTime.now(),
+      );
+    }
+    notifyListeners();
+  }
 }

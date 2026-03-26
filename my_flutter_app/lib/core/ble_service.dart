@@ -1,7 +1,10 @@
 import 'dart:math' as math;
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+// import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 
+/// BLE Service - Manages Bluetooth Low Energy device scanning
+/// Note: flutter_blue_plus package not yet installed in pubspec.yaml
+/// Using mock implementation for MVP development
 class BleService {
   static final BleService _instance = BleService._internal();
 
@@ -43,93 +46,70 @@ class BleService {
     return distance.clamp(minDistance, maxDistance);
   }
 
-  /// Scan for ESP32 tracker devices
+  /// Scan for ESP32 tracker devices (Mock Implementation)
   /// Returns a list of discovered PendingTracker objects
+  /// Note: Uses mock data - real BLE scanning requires flutter_blue_plus package
   Future<List<PendingTracker>> scanForTrackers({
     Duration scanDuration = const Duration(seconds: 5),
   }) async {
-    final trackers = <String, PendingTracker>{};
-
     try {
-      // Start scanning
-      await FlutterBluePlus.startScan(timeout: scanDuration);
-
-      // Listen to scan results
-      FlutterBluePlus.scanResults.listen((results) {
-        for (ScanResult result in results) {
-          final device = result.device;
-          final name = device.name;
-          final rssi = result.rssi;
-          final address = device.remoteId.toString();
-
-          // Check if it's an ESP32 tracker
-          final parsed = parseDeviceName(name);
-          if (parsed == null) continue;
-
-          // Skip weak signals
-          if (rssi < -100) continue;
-
-          final deviceId = "${parsed.deviceId}_${parsed.serialNumber}";
-
-          // Store latest scan result
-          if (!trackers.containsKey(deviceId) ||
-              trackers[deviceId]!.signalStrength < rssi) {
-            trackers[deviceId] = PendingTracker(
-              deviceId: deviceId,
-              signalStrength: ((rssi + 100) * 2).clamp(0, 100).toInt(), // Convert RSSI to 0-100
-              discovered: DateTime.now(),
-              serialNumber: parsed.serialNumber,
-              bleAddress: address,
-              rssi: rssi,
-            );
-          }
-        }
-      });
-
-      // Wait for scan to complete
+      // Simulate scanning delay
       await Future.delayed(scanDuration);
-      await FlutterBluePlus.stopScan();
-
-      return trackers.values.toList();
+      
+      // Return mock pending trackers from mock data
+      final mockPending = <PendingTracker>[
+        PendingTracker(
+          deviceId: "esp32_indiv_03F2",
+          signalStrength: 85,
+          discovered: DateTime.now(),
+          serialNumber: "03F2",
+          bleAddress: "A1:B2:C3:D4:E5:F6",
+          rssi: -45,
+        ),
+        PendingTracker(
+          deviceId: "esp32_indiv_0A4B",
+          signalStrength: 72,
+          discovered: DateTime.now().subtract(const Duration(seconds: 2)),
+          serialNumber: "0A4B",
+          bleAddress: "A1:B2:C3:D4:E5:F7",
+          rssi: -58,
+        ),
+        PendingTracker(
+          deviceId: "esp32_indiv_1C7E",
+          signalStrength: 60,
+          discovered: DateTime.now().subtract(const Duration(seconds: 4)),
+          serialNumber: "1C7E",
+          bleAddress: "A1:B2:C3:D4:E5:F8",
+          rssi: -70,
+        ),
+      ];
+      
+      return mockPending;
     } catch (e) {
       print('[BleService] Error scanning: $e');
       return [];
     }
   }
 
-  /// Stop scanning
+  /// Stop scanning (Mock Implementation)
   Future<void> stopScan() async {
-    try {
-      await FlutterBluePlus.stopScan();
-    } catch (e) {
-      print('[BleService] Error stopping scan: $e');
-    }
+    // No-op for mock implementation
   }
 
-  /// Check if Bluetooth is available
+  /// Check if Bluetooth is available (Mock Implementation)
+  /// Always returns true for development
   Future<bool> isBluetoothAvailable() async {
-    try {
-      return await FlutterBluePlus.isSupported;
-    } catch (e) {
-      return false;
-    }
+    return true;
   }
 
-  /// Check if Bluetooth is on
+  /// Check if Bluetooth is on (Mock Implementation)
+  /// Always returns true for development
   Future<bool> isBluetoothOn() async {
-    try {
-      return await FlutterBluePlus.isOn;
-    } catch (e) {
-      return false;
-    }
+    return true;
   }
 
-  /// Turn on Bluetooth (Android only)
+  /// Turn on Bluetooth (Mock Implementation - No-op)
   Future<void> turnOnBluetooth() async {
-    try {
-      await FlutterBluePlus.turnOn();
-    } catch (e) {
-      print('[BleService] Error turning on Bluetooth: $e');
-    }
+    // No-op for mock implementation
   }
 }

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import 'package:my_flutter_app/core/tracker_provider.dart';
+import 'package:my_flutter_app/widgets/app_bottom_nav_bar.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class AlertsScreen extends StatelessWidget {
@@ -19,20 +22,48 @@ class AlertsScreen extends StatelessWidget {
         title: const Text('System Alerts', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600)),
         iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
       ),
-      body: alerts.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(LucideIcons.bellOff, size: 64, color: Color(0xFFCBD5E1)),
-                  const SizedBox(height: 16),
-                  const Text('No Alerts', style: TextStyle(fontSize: 18, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  const Text('System is operating normally.', style: TextStyle(color: Color(0xFF94A3B8))),
-                ],
-              ),
-            )
-          : ListView.separated(
+      body: Column(
+        children: [
+          // Breadcrumb Navigation
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    context.pop();
+                  },
+                  child: const Row(
+                    children: [
+                      Icon(LucideIcons.radio, size: 14, color: Color(0xFF2563EB)),
+                      SizedBox(width: 4),
+                      Text('Dashboard', style: TextStyle(color: Color(0xFF2563EB), fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(LucideIcons.chevronRight, size: 14, color: Color(0xFF94A3B8)),
+                const SizedBox(width: 8),
+                const Text('Alerts', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+              ],
+            ),
+          ),
+          Expanded(
+            child: alerts.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(LucideIcons.bellOff, size: 64, color: Color(0xFFCBD5E1)),
+                        const SizedBox(height: 16),
+                        const Text('No Alerts', style: TextStyle(fontSize: 18, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 8),
+                        const Text('System is operating normally.', style: TextStyle(color: Color(0xFF94A3B8))),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: alerts.length,
               separatorBuilder: (context, index) => const SizedBox(height: 12),
@@ -84,17 +115,34 @@ class AlertsScreen extends StatelessWidget {
                     ),
                     trailing: alert.acknowledged
                         ? const Icon(LucideIcons.check, color: Colors.green)
-                        : TextButton(
-                            onPressed: () => context.read<TrackerProvider>().acknowledgeAlert(alert.id),
-                            style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF2563EB),
-                            ),
-                            child: const Text('Acknowledge'),
+                        : PopupMenuButton<String>(
+                            onSelected: (value) {
+                              HapticFeedback.lightImpact();
+                              if (value == 'acknowledge') {
+                                context.read<TrackerProvider>().acknowledgeAlert(alert.id);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'acknowledge',
+                                child: Row(
+                                  children: [
+                                    Icon(LucideIcons.check, size: 16, color: Color(0xFF2563EB)),
+                                    SizedBox(width: 8),
+                                    Text('Mark as Read'),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                   ),
                 );
               },
             ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: AppBottomNavBar(currentPath: '/alerts'),
     );
   }
 }

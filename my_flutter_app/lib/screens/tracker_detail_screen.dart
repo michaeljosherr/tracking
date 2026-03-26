@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -15,27 +16,52 @@ class TrackerDetailScreen extends StatelessWidget {
     String newName = tracker.name;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Rename Tracker'),
-        content: TextField(
-          controller: TextEditingController(text: newName),
-          onChanged: (val) => newName = val,
-          decoration: const InputDecoration(
-            labelText: 'Tracker Name',
-            border: OutlineInputBorder(),
+      builder: (context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.8, end: 1.0),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        builder: (context, value, child) {
+          return Transform.scale(
+            scale: value,
+            child: Opacity(
+              opacity: value,
+              child: child,
+            ),
+          );
+        },
+        child: AlertDialog(
+          title: const Text('Rename Tracker', style: TextStyle(fontWeight: FontWeight.w600)),
+          content: TextField(
+            controller: TextEditingController(text: newName),
+            onChanged: (val) => newName = val,
+            decoration: InputDecoration(
+              labelText: 'Tracker Name',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
+              ),
+            ),
+            autofocus: true,
           ),
-          autofocus: true,
+          actions: [
+            TextButton(
+              onPressed: () => context.pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                context.read<TrackerProvider>().renameTracker(tracker.id, newName);
+                context.pop();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+              ),
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => context.pop(), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              context.read<TrackerProvider>().renameTracker(tracker.id, newName);
-              context.pop();
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }
@@ -43,22 +69,40 @@ class TrackerDetailScreen extends StatelessWidget {
   void _showUnregisterConfirm(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Unregister Tracker?'),
-        content: const Text(
-            'This tracker will be removed from your dashboard and will no longer send updates.'),
-        actions: [
-          TextButton(onPressed: () => context.pop(), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () {
-              context.read<TrackerProvider>().unregisterTracker(trackerId);
-              context.pop();
-              context.pop(); // Back to dashboard
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Unregister'),
-          ),
-        ],
+      builder: (context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.8, end: 1.0),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        builder: (context, value, child) {
+          return Transform.scale(
+            scale: value,
+            child: Opacity(
+              opacity: value,
+              child: child,
+            ),
+          );
+        },
+        child: AlertDialog(
+          title: const Text('Unregister Tracker?', style: TextStyle(fontWeight: FontWeight.w600)),
+          content: const Text(
+              'This tracker will be removed from your dashboard and will no longer send updates.'),
+          actions: [
+            TextButton(
+              onPressed: () => context.pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                HapticFeedback.mediumImpact();
+                context.read<TrackerProvider>().unregisterTracker(trackerId);
+                context.pop();
+                context.pop(); // Back to dashboard
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Unregister'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -85,7 +129,10 @@ class TrackerDetailScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit, size: 20),
-            onPressed: () => _showRenameDialog(context, tracker),
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              _showRenameDialog(context, tracker);
+            },
             tooltip: 'Rename Tracker',
           ),
         ],
@@ -94,6 +141,36 @@ class TrackerDetailScreen extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
+            // Breadcrumb Navigation
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    context.pop();
+                  },
+                  child: const Row(
+                    children: [
+                      Icon(LucideIcons.radio, size: 16, color: Color(0xFF2563EB)),
+                      SizedBox(width: 4),
+                      Text('Dashboard', style: TextStyle(color: Color(0xFF2563EB), fontSize: 13)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(LucideIcons.chevronRight, size: 16, color: Color(0xFF94A3B8)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    tracker.name,
+                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
             _buildHeaderCard(tracker),
             const SizedBox(height: 24),
             _buildStatsGrid(tracker),
@@ -106,7 +183,10 @@ class TrackerDetailScreen extends StatelessWidget {
               width: double.infinity,
               height: 48,
               child: OutlinedButton.icon(
-                onPressed: () => _showUnregisterConfirm(context),
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  _showUnregisterConfirm(context);
+                },
                 icon: const Icon(LucideIcons.trash2, size: 18),
                 label: const Text('Unregister Tracker'),
                 style: OutlinedButton.styleFrom(
@@ -191,19 +271,24 @@ class TrackerDetailScreen extends StatelessWidget {
   }
 
   Widget _buildStatsGrid(Tracker tracker) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 16,
-      mainAxisSpacing: 16,
-      childAspectRatio: 1.5,
-      children: [
-        _buildDetailCard('Signal Strength', '${tracker.signalStrength}%', Icons.bar_chart),
-        _buildDetailCard('Battery Level', tracker.batteryLevel == null ? '--' : '${tracker.batteryLevel}%', LucideIcons.battery),
-        _buildDetailCard('Last Seen', timeago.format(tracker.lastSeen), LucideIcons.clock),
-        _buildDetailCard('Location', 'Hub Vicinity', LucideIcons.mapPin),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isSmallScreen = constraints.maxWidth < 500;
+        return GridView.count(
+          crossAxisCount: isSmallScreen ? 2 : 4,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: isSmallScreen ? 1.5 : 1.2,
+          children: [
+            _buildDetailCard('Signal Strength', '${tracker.signalStrength}%', Icons.bar_chart),
+            _buildDetailCard('Battery Level', tracker.batteryLevel == null ? '--' : '${tracker.batteryLevel}%', LucideIcons.battery),
+            _buildDetailCard('Last Seen', timeago.format(tracker.lastSeen), LucideIcons.clock),
+            _buildDetailCard('Location', 'Hub Vicinity', LucideIcons.mapPin),
+          ],
+        );
+      },
     );
   }
 

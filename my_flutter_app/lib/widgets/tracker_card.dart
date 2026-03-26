@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
@@ -86,7 +87,12 @@ class TrackerCard extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => context.push('/tracker/${tracker.id}'),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          context.push('/tracker/${tracker.id}');
+        },
+        splashColor: const Color(0xFF2563EB).withOpacity(0.1),
+        highlightColor: const Color(0xFF2563EB).withOpacity(0.05),
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Column(
@@ -102,9 +108,13 @@ class TrackerCard extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              tracker.name,
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Color(0xFF0F172A)), // Slate 900
+                            Expanded(
+                              child: Text(
+                                tracker.name,
+                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Color(0xFF0F172A)), // Slate 900
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Container(
