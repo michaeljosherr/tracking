@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/core/tracker_provider.dart';
+import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:my_flutter_app/widgets/app_page_layout.dart';
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -125,7 +127,7 @@ class AlertsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAlertCard(BuildContext context, dynamic alert) {
+  Widget _buildAlertCard(BuildContext context, Alert alert) {
     late final Color surfaceColor;
     late final Color accentColor;
     late final IconData icon;
@@ -160,75 +162,79 @@ class AlertsScreen extends StatelessWidget {
               : accentColor.withValues(alpha: 0.28),
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: accentColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => context.push('/tracker/${alert.trackerId}'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: accentColor, size: 20),
               ),
-              child: Icon(icon, color: accentColor, size: 20),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    alert.message,
-                    style: TextStyle(
-                      fontWeight: alert.acknowledged
-                          ? FontWeight.w500
-                          : FontWeight.w700,
-                      color: const Color(0xFF0F172A),
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    timeago.format(alert.timestamp),
-                    style: const TextStyle(
-                      color: Color(0xFF64748B),
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            alert.acknowledged
-                ? const Icon(LucideIcons.check, color: Color(0xFF16A34A))
-                : PopupMenuButton<String>(
-                    onSelected: (value) {
-                      if (value == 'acknowledge') {
-                        HapticFeedback.lightImpact();
-                        context.read<TrackerProvider>().acknowledgeAlert(
-                          alert.id,
-                        );
-                      }
-                    },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
-                        value: 'acknowledge',
-                        child: Row(
-                          children: [
-                            Icon(
-                              LucideIcons.check,
-                              size: 16,
-                              color: Color(0xFF2563EB),
-                            ),
-                            SizedBox(width: 8),
-                            Text('Mark as read'),
-                          ],
-                        ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      alert.message,
+                      style: TextStyle(
+                        fontWeight: alert.acknowledged
+                            ? FontWeight.w500
+                            : FontWeight.w700,
+                        color: const Color(0xFF0F172A),
+                        height: 1.35,
                       ),
-                    ],
-                  ),
-          ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      timeago.format(alert.timestamp),
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              alert.acknowledged
+                  ? const Icon(LucideIcons.check, color: Color(0xFF16A34A))
+                  : PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'acknowledge') {
+                          HapticFeedback.lightImpact();
+                          context.read<TrackerProvider>().acknowledgeAlert(
+                            alert.id,
+                          );
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: 'acknowledge',
+                          child: Row(
+                            children: [
+                              Icon(
+                                LucideIcons.check,
+                                size: 16,
+                                color: Color(0xFF2563EB),
+                              ),
+                              SizedBox(width: 8),
+                              Text('Mark as read'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+            ],
+          ),
         ),
       ),
     );

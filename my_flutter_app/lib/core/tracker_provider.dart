@@ -17,11 +17,15 @@ class TrackerProvider with ChangeNotifier {
   List<PendingTracker> get pendingTrackers => _pendingTrackers;
   bool get isScanning => _isScanning;
 
-  List<Alert> get activeAlerts => _alerts.where((a) => !a.acknowledged).toList();
+  List<Alert> get activeAlerts =>
+      _alerts.where((a) => !a.acknowledged).toList();
 
-  int get connectedCount => _trackers.where((t) => t.status == TrackerStatus.connected).length;
-  int get outOfRangeCount => _trackers.where((t) => t.status == TrackerStatus.outOfRange).length;
-  int get disconnectedCount => _trackers.where((t) => t.status == TrackerStatus.disconnected).length;
+  int get connectedCount =>
+      _trackers.where((t) => t.status == TrackerStatus.connected).length;
+  int get outOfRangeCount =>
+      _trackers.where((t) => t.status == TrackerStatus.outOfRange).length;
+  int get disconnectedCount =>
+      _trackers.where((t) => t.status == TrackerStatus.disconnected).length;
 
   Tracker? getTracker(String id) {
     try {
@@ -32,12 +36,16 @@ class TrackerProvider with ChangeNotifier {
   }
 
   /// Scan for ESP32 Tracker devices via BLE
-  Future<void> scanForTrackers({Duration duration = const Duration(seconds: 5)}) async {
+  Future<void> scanForTrackers({
+    Duration duration = const Duration(seconds: 5),
+  }) async {
     _isScanning = true;
     notifyListeners();
 
     try {
-      final scannedTrackers = await _ble.scanForTrackers(scanDuration: duration);
+      final scannedTrackers = await _ble.scanForTrackers(
+        scanDuration: duration,
+      );
       _pendingTrackers.clear();
       _pendingTrackers.addAll(scannedTrackers);
       notifyListeners();
@@ -64,7 +72,7 @@ class TrackerProvider with ChangeNotifier {
     final index = _trackers.indexWhere((t) => t.id == id);
     if (index != -1) {
       _trackers[index] = _trackers[index].copyWith(name: newName);
-      
+
       // Also update name in any related alerts
       for (var i = 0; i < _alerts.length; i++) {
         if (_alerts[i].trackerId == id) {
@@ -80,12 +88,12 @@ class TrackerProvider with ChangeNotifier {
   void registerDevice(PendingTracker pendingTracker, String name) {
     // Generate a unique ID
     final newId = _uuid.v4();
-    
+
     // Calculate distance from RSSI
-    final distance = pendingTracker.rssi != null 
+    final distance = pendingTracker.rssi != null
         ? BleService.calculateDistance(pendingTracker.rssi!)
         : null;
-    
+
     final newTracker = Tracker(
       id: newId,
       deviceId: pendingTracker.deviceId,
@@ -123,15 +131,28 @@ class TrackerProvider with ChangeNotifier {
     }
   }
 
+  void acknowledgeAllAlerts() {
+    var changed = false;
+
+    for (var i = 0; i < _alerts.length; i++) {
+      if (!_alerts[i].acknowledged) {
+        _alerts[i] = _alerts[i].copyWith(acknowledged: true);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
   /// Refresh tracker data (simulate data update from BLE)
   void refreshTrackers() {
     // Simulate updating tracker statuses
     for (var i = 0; i < _trackers.length; i++) {
       final tracker = _trackers[i];
       // Update last seen timestamp
-      _trackers[i] = tracker.copyWith(
-        lastSeen: DateTime.now(),
-      );
+      _trackers[i] = tracker.copyWith(lastSeen: DateTime.now());
     }
     notifyListeners();
   }
