@@ -4,7 +4,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/core/tracker_provider.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:my_flutter_app/widgets/animated_widgets.dart';
-import 'package:my_flutter_app/widgets/app_bottom_nav_bar.dart';
 import 'package:my_flutter_app/widgets/app_page_layout.dart';
 import 'package:my_flutter_app/widgets/responsive_helper.dart';
 import 'package:my_flutter_app/widgets/tracker_card.dart';
@@ -113,7 +112,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: const Icon(LucideIcons.plus, size: 18),
             label: Text(isMobile ? 'Add' : 'Add Tracker'),
           ),
-          bottomNavigationBar: const AppBottomNavBar(currentPath: '/'),
         );
       },
     );
@@ -199,12 +197,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     _buildHeaderAction(
                       icon: LucideIcons.bell,
                       badgeCount: activeAlerts,
-                      onPressed: () => context.push('/alerts'),
+                      onPressed: () => context.go('/alerts'),
                     ),
                     const SizedBox(width: 8),
                     _buildHeaderAction(
                       icon: LucideIcons.settings,
-                      onPressed: () => context.push('/settings'),
+                      onPressed: () => context.go('/settings'),
                     ),
                   ],
                 ),
@@ -338,7 +336,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
           TextButton(
-            onPressed: () => context.push('/alerts'),
+            onPressed: () => context.go('/alerts'),
             child: const Text('View'),
           ),
         ],
@@ -542,9 +540,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       duration: const Duration(milliseconds: 450),
       curve: Curves.easeOutBack,
       builder: (context, value, child) {
+        final safeOpacity = value.clamp(0.0, 1.0).toDouble();
+        final safeScale = value < 0 ? 0.0 : value;
         return Transform.scale(
-          scale: value,
-          child: Opacity(opacity: value, child: child),
+          scale: safeScale,
+          child: Opacity(opacity: safeOpacity, child: child),
         );
       },
       child: Container(

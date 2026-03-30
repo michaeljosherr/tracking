@@ -5,7 +5,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/core/app_preferences_provider.dart';
 import 'package:my_flutter_app/core/auth_provider.dart';
 import 'package:my_flutter_app/core/theme_provider.dart';
-import 'package:my_flutter_app/widgets/app_bottom_nav_bar.dart';
 import 'package:my_flutter_app/widgets/app_page_layout.dart';
 import 'package:provider/provider.dart';
 
@@ -76,7 +75,6 @@ class SettingsScreen extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: const AppBottomNavBar(currentPath: '/settings'),
     );
   }
 

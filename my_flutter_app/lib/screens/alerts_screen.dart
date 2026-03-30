@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/core/tracker_provider.dart';
-import 'package:my_flutter_app/widgets/app_bottom_nav_bar.dart';
 import 'package:my_flutter_app/widgets/app_page_layout.dart';
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -45,7 +44,6 @@ class AlertsScreen extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: const AppBottomNavBar(currentPath: '/alerts'),
     );
   }
 

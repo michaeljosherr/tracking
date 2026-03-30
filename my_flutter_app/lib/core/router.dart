@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:my_flutter_app/core/app_preferences_provider.dart';
-import 'package:my_flutter_app/screens/dashboard_screen.dart';
-import 'package:my_flutter_app/screens/pairing_screen.dart';
-import 'package:my_flutter_app/screens/tracker_detail_screen.dart';
 import 'package:my_flutter_app/screens/alerts_screen.dart';
+import 'package:my_flutter_app/screens/dashboard_screen.dart';
 import 'package:my_flutter_app/screens/settings_screen.dart';
 import 'package:my_flutter_app/screens/onboarding_screen.dart';
+import 'package:my_flutter_app/screens/pairing_screen.dart';
+import 'package:my_flutter_app/screens/tracker_detail_screen.dart';
+import 'package:my_flutter_app/widgets/app_tab_shell.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -30,7 +31,39 @@ GoRouter createRouter(AppPreferencesProvider preferencesProvider) {
       return null;
     },
     routes: [
-      GoRoute(path: '/', builder: (context, state) => const DashboardScreen()),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            AppTabShell(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/',
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: DashboardScreen()),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/alerts',
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: AlertsScreen()),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/settings',
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: SettingsScreen()),
+              ),
+            ],
+          ),
+        ],
+      ),
       GoRoute(
         path: '/pairing',
         builder: (context, state) => const PairingScreen(),
@@ -41,14 +74,6 @@ GoRouter createRouter(AppPreferencesProvider preferencesProvider) {
           final id = state.pathParameters['id']!;
           return TrackerDetailScreen(trackerId: id);
         },
-      ),
-      GoRoute(
-        path: '/alerts',
-        builder: (context, state) => const AlertsScreen(),
-      ),
-      GoRoute(
-        path: '/settings',
-        builder: (context, state) => const SettingsScreen(),
       ),
       GoRoute(
         path: '/onboarding',

@@ -25,7 +25,7 @@ class AnimatedCounter extends StatefulWidget {
 
 class _AnimatedCounterState extends State<AnimatedCounter>
     with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
+  AnimationController? _animationController;
   late Animation<int> _animation;
   int _previousCount = 0;
 
@@ -46,24 +46,22 @@ class _AnimatedCounterState extends State<AnimatedCounter>
   }
 
   void _setupAnimation() {
+    _animationController?.dispose();
     _animationController = AnimationController(
       duration: widget.duration,
       vsync: this,
     );
 
-    _animation = IntTween(
-      begin: _previousCount,
-      end: widget.count,
-    ).animate(
-      CurvedAnimation(parent: _animationController, curve: widget.curve),
+    _animation = IntTween(begin: _previousCount, end: widget.count).animate(
+      CurvedAnimation(parent: _animationController!, curve: widget.curve),
     );
 
-    _animationController.forward();
+    _animationController!.forward();
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _animationController?.dispose();
     super.dispose();
   }
 
@@ -113,10 +111,7 @@ class AnimatedStatCard extends StatelessWidget {
         builder: (context, scale, child) {
           return Transform.scale(
             scale: scale,
-            child: Opacity(
-              opacity: 0.5 + (scale * 0.5),
-              child: child,
-            ),
+            child: Opacity(opacity: 0.5 + (scale * 0.5), child: child),
           );
         },
         child: Container(
@@ -144,14 +139,10 @@ class AnimatedStatCard extends StatelessWidget {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: iconColor.withOpacity(0.1),
+                      color: iconColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(
-                      icon,
-                      color: iconColor,
-                      size: 20,
-                    ),
+                    child: Icon(icon, color: iconColor, size: 20),
                   ),
                 ],
               ),
@@ -197,19 +188,13 @@ class AnimatedListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<Offset>(
-      tween: Tween(
-        begin: const Offset(-0.5, 0),
-        end: Offset.zero,
-      ),
+      tween: Tween(begin: const Offset(-0.5, 0), end: Offset.zero),
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeOutCubic,
       builder: (context, offset, child) {
         return Transform.translate(
           offset: offset * 100,
-          child: Opacity(
-            opacity: 1 - (offset.dx.abs() * 0.5),
-            child: child,
-          ),
+          child: Opacity(opacity: 1 - (offset.dx.abs() * 0.5), child: child),
         );
       },
       child: ListTile(
