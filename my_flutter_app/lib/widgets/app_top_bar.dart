@@ -42,7 +42,7 @@ class _AppTopBarState extends State<AppTopBar> {
           gradient: const LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFFCFDFE), Color(0xFFF3F6F9)],
+            colors: [Color(0xFFF8FBFF), Color(0xFFF1F6FE)],
           ),
           border: const Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
           boxShadow: [
@@ -67,10 +67,10 @@ class _AppTopBarState extends State<AppTopBar> {
                     gradient: const LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [Color(0xFFFFFFFF), Color(0xFFF9FBFD)],
+                      colors: [Color(0xFFFFFFFF), Color(0xFFF7FAFF)],
                     ),
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: const Color(0xFFE7EDF3)),
+                    border: Border.all(color: const Color(0xFFDCE8F8)),
                     boxShadow: [
                       BoxShadow(
                         color: const Color(0xFF0F172A).withValues(alpha: 0.05),
@@ -95,15 +95,15 @@ class _AppTopBarState extends State<AppTopBar> {
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                   colors: [
-                                    Color(0xFFCBD5E1),
-                                    Color(0xFF64748B),
+                                    Color(0xFF60A5FA),
+                                    Color(0xFF2563EB),
                                   ],
                                 ),
                                 borderRadius: BorderRadius.circular(999),
                                 boxShadow: [
                                   BoxShadow(
                                     color: const Color(
-                                      0xFF475569,
+                                      0xFF2563EB,
                                     ).withValues(alpha: 0.12),
                                     blurRadius: 8,
                                     offset: const Offset(0, 3),
@@ -120,7 +120,7 @@ class _AppTopBarState extends State<AppTopBar> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: Color(0xFF64748B),
+                                      color: Color(0xFF2563EB),
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
                                       letterSpacing: 0.35,
@@ -191,13 +191,13 @@ class _AppTopBarState extends State<AppTopBar> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFFFFFFF), Color(0xFFF7F9FC)],
+          colors: [Color(0xFFFFFFFF), Color(0xFFF4F8FF)],
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5EAF0)),
+        border: Border.all(color: const Color(0xFFD6E4FF)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+            color: const Color(0xFF1D4ED8).withValues(alpha: 0.06),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -214,7 +214,7 @@ class _AppTopBarState extends State<AppTopBar> {
             width: 44,
             height: 44,
             child: Center(
-              child: Icon(icon, color: const Color(0xFF475569), size: 18),
+              child: Icon(icon, color: const Color(0xFF2563EB), size: 18),
             ),
           ),
         ),
