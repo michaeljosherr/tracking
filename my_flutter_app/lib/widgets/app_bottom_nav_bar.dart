@@ -55,52 +55,53 @@ class _AppBottomNavBarState extends State<AppBottomNavBar> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
+    return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: const Color(0xFFE2E8F0), width: 1),
-        ),
+        color: Colors.white,
+        border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 20,
+            offset: const Offset(0, -6),
           ),
         ],
       ),
-      child: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onNavTap,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF2563EB),
-        unselectedItemColor: const Color(0xFF94A3B8),
-        selectedLabelStyle: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(12, 8, 12, bottomInset > 0 ? 8 : 12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: NavigationBar(
+              height: 72,
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: _onNavTap,
+              backgroundColor: const Color(0xFFF8FAFC),
+              indicatorColor: const Color(0xFFDBEAFE),
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(LucideIcons.radio),
+                  selectedIcon: Icon(LucideIcons.radioReceiver),
+                  label: 'Trackers',
+                ),
+                NavigationDestination(
+                  icon: Icon(LucideIcons.bell),
+                  selectedIcon: Icon(LucideIcons.bellRing),
+                  label: 'Alerts',
+                ),
+                NavigationDestination(
+                  icon: Icon(LucideIcons.settings),
+                  selectedIcon: Icon(LucideIcons.settings2),
+                  label: 'Settings',
+                ),
+              ],
+            ),
+          ),
         ),
-        unselectedLabelStyle: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.normal,
-        ),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(LucideIcons.radio),
-            activeIcon: Icon(LucideIcons.radio),
-            label: 'Trackers',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(LucideIcons.bell),
-            activeIcon: Icon(LucideIcons.bell),
-            label: 'Alerts',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(LucideIcons.settings),
-            activeIcon: Icon(LucideIcons.settings),
-            label: 'Settings',
-          ),
-        ],
       ),
     );
   }

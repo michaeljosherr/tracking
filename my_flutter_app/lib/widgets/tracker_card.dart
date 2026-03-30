@@ -20,7 +20,7 @@ class TrackerCard extends StatelessWidget {
     }
   }
 
-  Color _getStatusBgColor() {
+  Color _getStatusBackgroundColor() {
     switch (tracker.status) {
       case TrackerStatus.connected:
         return Colors.green.shade50;
@@ -34,11 +34,11 @@ class TrackerCard extends StatelessWidget {
   String _getStatusText() {
     switch (tracker.status) {
       case TrackerStatus.connected:
-        return 'connected';
+        return 'Connected';
       case TrackerStatus.outOfRange:
         return 'Out of Range';
       case TrackerStatus.disconnected:
-        return 'disconnected';
+        return 'Disconnected';
     }
   }
 
@@ -50,7 +50,11 @@ class TrackerCard extends StatelessWidget {
       return const Icon(LucideIcons.signalHigh, color: Colors.green, size: 20);
     }
     if (tracker.signalStrength >= 40) {
-      return const Icon(LucideIcons.signalMedium, color: Colors.orange, size: 20);
+      return const Icon(
+        LucideIcons.signalMedium,
+        color: Colors.orange,
+        size: 20,
+      );
     }
     return const Icon(LucideIcons.signalLow, color: Colors.red, size: 20);
   }
@@ -61,19 +65,23 @@ class TrackerCard extends StatelessWidget {
       return Icon(LucideIcons.battery, color: Colors.green.shade600, size: 16);
     }
     if (tracker.batteryLevel! >= 30) {
-      return Icon(LucideIcons.batteryMedium, color: Colors.orange.shade600, size: 16);
+      return Icon(
+        LucideIcons.batteryMedium,
+        color: Colors.orange.shade600,
+        size: 16,
+      );
     }
     return Icon(LucideIcons.batteryLow, color: Colors.red.shade600, size: 16);
   }
 
   String _formatLastSeen(DateTime date) {
     final seconds = DateTime.now().difference(date).inSeconds;
-    if (seconds < 10) return "Just now";
-    if (seconds < 60) return "${seconds}s ago";
+    if (seconds < 10) return 'Just now';
+    if (seconds < 60) return '${seconds}s ago';
     final minutes = seconds ~/ 60;
-    if (minutes < 60) return "${minutes}m ago";
+    if (minutes < 60) return '${minutes}m ago';
     final hours = minutes ~/ 60;
-    return "${hours}h ago";
+    return '${hours}h ago';
   }
 
   @override
@@ -82,184 +90,256 @@ class TrackerCard extends StatelessWidget {
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFFE2E8F0)), // Slate 200
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         onTap: () {
           HapticFeedback.lightImpact();
           context.push('/tracker/${tracker.id}');
         },
-        splashColor: const Color(0xFF2563EB).withOpacity(0.1),
-        highlightColor: const Color(0xFF2563EB).withOpacity(0.05),
+        splashColor: const Color(0xFF2563EB).withValues(alpha: 0.1),
+        highlightColor: const Color(0xFF2563EB).withValues(alpha: 0.05),
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+          padding: const EdgeInsets.all(18),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 420;
+
+              return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  if (isCompact) _buildCompactHeader() else _buildWideHeader(),
+                  const SizedBox(height: 18),
+                  _buildSignalSection(),
+                  if (tracker.rssi != null ||
+                      tracker.distance != null ||
+                      tracker.serialNumber != null) ...[
+                    const SizedBox(height: 16),
+                    const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 24,
+                      runSpacing: 12,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                tracker.name,
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Color(0xFF0F172A)), // Slate 900
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: _getStatusBgColor(),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 6,
-                                    height: 6,
-                                    decoration: BoxDecoration(
-                                      color: _getStatusColor(),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    _getStatusText().toUpperCase(),
-                                    style: TextStyle(
-                                      color: _getStatusColor(),
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        _buildMetric(
+                          'RSSI',
+                          tracker.rssi != null
+                              ? '${tracker.rssi} dBm'
+                              : '-- dBm',
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Device ID: ${tracker.deviceId}',
-                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                        _buildMetric(
+                          'Distance',
+                          tracker.distance != null
+                              ? '${tracker.distance!.toStringAsFixed(2)} m'
+                              : '-- m',
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Last seen: ${_formatLastSeen(tracker.lastSeen)}',
-                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                        ),
+                        if (tracker.serialNumber != null)
+                          _buildMetric('Serial', tracker.serialNumber!),
                       ],
                     ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: _getSignalIcon(),
-                      ),
-                      const SizedBox(height: 12),
-                      if (tracker.batteryLevel != null)
-                        Row(
-                          children: [
-                            _getBatteryIcon()!,
-                            const SizedBox(width: 6),
-                            Text(
-                              '${tracker.batteryLevel}%',
-                              style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Signal Strength', style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w500)),
-                  Text('${tracker.signalStrength}%', style: const TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w600)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: tracker.signalStrength / 100,
-                  backgroundColor: const Color(0xFFF1F5F9), // Slate 100
-                  color: tracker.signalStrength >= 70
-                      ? Colors.green.shade500
-                      : tracker.signalStrength >= 40
-                          ? Colors.orange.shade500
-                          : Colors.red.shade500,
-                  minHeight: 8,
-                ),
-              ),
-              // BLE Data Section
-              if (tracker.rssi != null || tracker.distance != null) ...[
-                const SizedBox(height: 16),
-                Divider(color: const Color(0xFFE2E8F0), height: 1),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('RSSI', style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w500)),
-                        const SizedBox(height: 4),
-                        Text(
-                          tracker.rssi != null ? '${tracker.rssi} dBm' : '-- dBm',
-                          style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const Text('Distance', style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w500)),
-                        const SizedBox(height: 4),
-                        Text(
-                          tracker.distance != null ? '${tracker.distance?.toStringAsFixed(2)} m' : '-- m',
-                          style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                    if (tracker.serialNumber != null)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          const Text('Serial', style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w500)),
-                          const SizedBox(height: 4),
-                          Text(
-                            tracker.serialNumber!,
-                            style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
                   ],
-                ),
-              ],
-            ],
+                ],
+              );
+            },
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildCompactHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _buildDeviceSummary()),
+            const SizedBox(width: 12),
+            _buildSignalBatteryPill(),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _buildStatusChip(),
+      ],
+    );
+  }
+
+  Widget _buildWideHeader() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: _buildDeviceSummary()),
+        const SizedBox(width: 16),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _buildStatusChip(),
+            const SizedBox(height: 12),
+            _buildSignalBatteryPill(),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDeviceSummary() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          tracker.name,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 17,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Device ID: ${tracker.deviceId}',
+          style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Last seen: ${_formatLastSeen(tracker.lastSeen)}',
+          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _getStatusBackgroundColor(),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: _getStatusColor(),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            _getStatusText().toUpperCase(),
+            style: TextStyle(
+              color: _getStatusColor(),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSignalBatteryPill() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _getSignalIcon(),
+          if (tracker.batteryLevel != null) ...[
+            const SizedBox(width: 10),
+            _getBatteryIcon()!,
+            const SizedBox(width: 4),
+            Text(
+              '${tracker.batteryLevel}%',
+              style: const TextStyle(
+                color: Color(0xFF475569),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSignalSection() {
+    final signalColor = tracker.signalStrength >= 70
+        ? Colors.green.shade500
+        : tracker.signalStrength >= 40
+        ? Colors.orange.shade500
+        : Colors.red.shade500;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              'Signal Strength',
+              style: TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${tracker.signalStrength}%',
+              style: const TextStyle(
+                color: Color(0xFF334155),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: tracker.signalStrength / 100,
+            backgroundColor: const Color(0xFFF1F5F9),
+            color: signalColor,
+            minHeight: 9,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetric(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF64748B),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Color(0xFF0F172A),
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }

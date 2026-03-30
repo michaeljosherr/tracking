@@ -24,29 +24,28 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AppPreferencesProvider()),
       ],
       child: Consumer3<AuthProvider, ThemeProvider, AppPreferencesProvider>(
-        builder: (context, authProvider, themeProvider, preferencesProvider, child) {
-          if (authProvider.isLoading) {
-            return const MaterialApp(
-              debugShowCheckedModeBanner: false,
-              home: Scaffold(
-                body: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              ),
-            );
-          }
+        builder:
+            (context, authProvider, themeProvider, preferencesProvider, child) {
+              if (authProvider.isLoading) {
+                return const MaterialApp(
+                  debugShowCheckedModeBanner: false,
+                  home: Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  ),
+                );
+              }
 
-          final router = createRouter(authProvider, preferencesProvider);
+              final router = createRouter(preferencesProvider);
 
-          return MaterialApp.router(
-            title: 'ESP Tracker',
-            debugShowCheckedModeBanner: false,
-            theme: AppThemes.lightTheme,
-            darkTheme: AppThemes.darkTheme,
-            themeMode: themeProvider.themeMode,
-            routerConfig: router,
-          );
-        },
+              return MaterialApp.router(
+                title: 'ESP Tracker',
+                debugShowCheckedModeBanner: false,
+                theme: AppThemes.lightTheme,
+                darkTheme: AppThemes.darkTheme,
+                themeMode: themeProvider.themeMode,
+                routerConfig: router,
+              );
+            },
       ),
     );
   }
