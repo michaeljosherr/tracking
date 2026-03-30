@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/core/tracker_provider.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
-import 'package:my_flutter_app/widgets/tracker_card.dart';
-import 'package:my_flutter_app/widgets/app_bottom_nav_bar.dart';
 import 'package:my_flutter_app/widgets/animated_widgets.dart';
+import 'package:my_flutter_app/widgets/app_page_layout.dart';
+import 'package:my_flutter_app/widgets/app_top_bar.dart';
+import 'package:my_flutter_app/widgets/responsive_helper.dart';
+import 'package:my_flutter_app/widgets/tracker_card.dart';
+import 'package:provider/provider.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -16,9 +18,64 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  static const int _listPageSize = 5;
+  static const int _gridPageSize = 4;
+
+  final TextEditingController _searchController = TextEditingController();
+
   String _searchQuery = '';
   String _filter = 'all';
-  bool _isGridView = false; // New: grid/list toggle
+  bool _isGridView = false;
+  bool _filtersExpanded = false;
+  int _listPage = 0;
+  int _visibleGridCount = _gridPageSize;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _updateViewMode(bool isGridView) {
+    setState(() {
+      _isGridView = isGridView;
+      _resetCollectionState();
+    });
+  }
+
+  void _resetCollectionState() {
+    _listPage = 0;
+    _visibleGridCount = _gridPageSize;
+  }
+
+  void _updateSearchQuery(String value) {
+    setState(() {
+      _searchQuery = value;
+      _resetCollectionState();
+    });
+  }
+
+  void _updateFilter(String value) {
+    setState(() {
+      _filter = value;
+      _resetCollectionState();
+    });
+  }
+
+  void _goToListPage(int page) {
+    setState(() {
+      _listPage = page;
+    });
+  }
+
+  void _showMoreGridItems(int totalTrackers) {
+    setState(() {
+      _visibleGridCount = (_visibleGridCount + _gridPageSize).clamp(
+        _gridPageSize,
+        totalTrackers,
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,289 +86,813 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final outOfRangeCount = trackerProvider.outOfRangeCount;
         final disconnectedCount = trackerProvider.disconnectedCount;
         final activeAlerts = trackerProvider.activeAlerts;
+        final isMobile = context.responsive.isMobile;
 
         final filteredTrackers = trackers.where((tracker) {
-          final matchesSearch = tracker.name.toLowerCase().contains(_searchQuery.toLowerCase()) || 
-                                tracker.deviceId.toLowerCase().contains(_searchQuery.toLowerCase());
-          final matchesFilter = _filter == 'all' || 
-                               (_filter == 'connected' && tracker.status == TrackerStatus.connected) ||
-                               (_filter == 'out-of-range' && tracker.status == TrackerStatus.outOfRange) ||
-                               (_filter == 'disconnected' && tracker.status == TrackerStatus.disconnected);
+          final query = _searchQuery.toLowerCase();
+          final matchesSearch =
+              tracker.name.toLowerCase().contains(query) ||
+              tracker.deviceId.toLowerCase().contains(query);
+          final matchesFilter =
+              _filter == 'all' ||
+              (_filter == 'connected' &&
+                  tracker.status == TrackerStatus.connected) ||
+              (_filter == 'out-of-range' &&
+                  tracker.status == TrackerStatus.outOfRange) ||
+              (_filter == 'disconnected' &&
+                  tracker.status == TrackerStatus.disconnected);
           return matchesSearch && matchesFilter;
         }).toList();
 
         return Scaffold(
-          backgroundColor: const Color(0xFFF8FAFC), // Slate 50
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await Future.delayed(const Duration(seconds: 1));
-          context.read<TrackerProvider>().refreshTrackers();
-        },
-        color: const Color(0xFF2563EB),
-        child: CustomScrollView(
-          slivers: [
-          SliverAppBar(
-            expandedHeight: 180.0,
-            floating: false,
-            pinned: true,
-            backgroundColor: const Color(0xFF2563EB), // Blue 600
-            flexibleSpace: FlexibleSpaceBar(
-              titlePadding: const EdgeInsets.only(left: 16, bottom: 16, right: 16),
-              title: const Row(
-                children: [
-                  Icon(LucideIcons.radio, size: 20, color: Colors.white),
-                  SizedBox(width: 8),
-                  Text('ESP32 Tracker', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
-                ],
-              ),
-              background: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF1E3A8A), Color(0xFF2563EB), Color(0xFF3B82F6)],
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 80, 16, 0),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final isSmallScreen = constraints.maxWidth < 400;
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: isSmallScreen
-                            ? [
-                                Expanded(
-                                  child: Column(
-                                    children: [
-                                      _buildStatCard('Connected', connectedCount, LucideIcons.radioReceiver),
-                                      const SizedBox(height: 12),
-                                      _buildStatCard('Out of Range', outOfRangeCount, LucideIcons.mapPinOff),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: _buildStatCard('Disconnected', disconnectedCount, LucideIcons.wifiOff),
-                                ),
-                              ]
-                            : [
-                                _buildStatCard('Connected', connectedCount, LucideIcons.radioReceiver),
-                                const SizedBox(width: 12),
-                                _buildStatCard('Out of Range', outOfRangeCount, LucideIcons.mapPinOff),
-                                const SizedBox(width: 12),
-                                _buildStatCard('Disconnected', disconnectedCount, LucideIcons.wifiOff),
-                              ],
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-            actions: [
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(LucideIcons.bell, color: Colors.white),
-                    onPressed: () => context.push('/alerts'),
-                  ),
-                  if (activeAlerts.isNotEmpty)
-                    Positioned(
-                      top: 12,
-                      right: 12,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444), // Red 500
-                          shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFF2563EB), width: 2),
-                        ),
-                        child: Text(
-                          '${activeAlerts.length}',
-                          style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              IconButton(
-                icon: const Icon(LucideIcons.settings, color: Colors.white),
-                onPressed: () => context.push('/settings'),
-              ),
-              const SizedBox(width: 8),
-            ],
-          ),
-          
-          SliverToBoxAdapter(
+          backgroundColor: const Color(0xFFF8FAFC),
+          body: SafeArea(
+            bottom: false,
             child: Column(
               children: [
-                if (activeAlerts.isNotEmpty)
-            Container(
-              color: Colors.red.shade50,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.red.shade800, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '${activeAlerts.length} active ${activeAlerts.length == 1 ? "alert" : "alerts"} require attention',
-                      style: TextStyle(color: Colors.red.shade800, fontSize: 13),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => context.push('/alerts'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.red.shade600,
-                      textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                      minimumSize: Size.zero,
-                      padding: EdgeInsets.zero,
-                    ),
-                    child: const Text('View'),
-                  ),
-                ],
-              ),
-            ),
-            
-                Container(
-                  color: Colors.white,
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-                  child: Column(
-                    children: [
-                      TextField(
-                        onChanged: (val) => setState(() => _searchQuery = val),
-                        decoration: InputDecoration(
-                          hintText: 'Search by name or device ID...',
-                          hintStyle: const TextStyle(color: Color(0xFF94A3B8)), // Slate 400
-                          prefixIcon: const Icon(LucideIcons.search, size: 20, color: Color(0xFF64748B)),
-                          suffixIcon: _searchQuery.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(LucideIcons.x, size: 18, color: Color(0xFF64748B)),
-                                  onPressed: () => setState(() => _searchQuery = ''),
-                                  tooltip: 'Clear search',
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: const Color(0xFFF1F5F9), // Slate 100
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
+                const AppTopBar(
+                  title: 'Dashboard',
+                  subtitle:
+                      'Monitor tracker health, alerts, and recent activity.',
+                ),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: () async {
+                      await Future.delayed(const Duration(milliseconds: 500));
+                      if (!mounted) return;
+                      trackerProvider.refreshTrackers();
+                    },
+                    color: const Color(0xFF2563EB),
+                    child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      children: [
+                        AppPageLayout(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildHeader(
+                                totalTrackers: trackers.length,
+                                connectedCount: connectedCount,
+                                outOfRangeCount: outOfRangeCount,
+                                disconnectedCount: disconnectedCount,
+                                activeAlerts: activeAlerts.length,
+                              ),
+                              const SizedBox(height: 12),
+                              _buildSearchAndFilters(
+                                totalTrackers: trackers.length,
+                                connectedCount: connectedCount,
+                                outOfRangeCount: outOfRangeCount,
+                                disconnectedCount: disconnectedCount,
+                              ),
+                              const SizedBox(height: 18),
+                              _buildTrackersHeader(
+                                filteredTrackers.length,
+                                isMobile,
+                              ),
+                              const SizedBox(height: 12),
+                              _buildTrackerCollection(filteredTrackers),
+                            ],
                           ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 0),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: [
-                                  _buildFilterChip('All (${trackers.length})', 'all'),
-                                  const SizedBox(width: 8),
-                                  _buildFilterChip('Connected ($connectedCount)', 'connected'),
-                                  const SizedBox(width: 8),
-                                  _buildFilterChip('Out of Range ($outOfRangeCount)', 'out-of-range'),
-                                  const SizedBox(width: 8),
-                                  _buildFilterChip('Disconnected ($disconnectedCount)', 'disconnected'),
-                                ],
-                              ),
-                            ),
-                          ),
-                          if (_filter != 'all')
-                            TextButton(
-                              onPressed: () => setState(() => _filter = 'all'),
-                              style: TextButton.styleFrom(
-                                padding: EdgeInsets.zero,
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: const Text('Reset', style: TextStyle(fontSize: 12, color: Color(0xFF2563EB))),
-                            ),
-                        ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHeader({
+    required int totalTrackers,
+    required int connectedCount,
+    required int outOfRangeCount,
+    required int disconnectedCount,
+    required int activeAlerts,
+  }) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  'Overview',
+                  style: TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                if (activeAlerts > 0)
+                  const Text(
+                    'Needs attention',
+                    style: TextStyle(
+                      color: Color(0xFFB91C1C),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildOverviewPill(
+                  icon: LucideIcons.users,
+                  label: '$totalTrackers devices',
+                ),
+                _buildOverviewPill(
+                  icon: LucideIcons.bell,
+                  label: activeAlerts == 0
+                      ? 'No open alerts'
+                      : '$activeAlerts active alerts',
+                  accentColor: activeAlerts == 0
+                      ? const Color(0xFF0F766E)
+                      : const Color(0xFFB91C1C),
+                  backgroundColor: activeAlerts == 0
+                      ? const Color(0xFFECFDF5)
+                      : const Color(0xFFFEF2F2),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth < 420
+                    ? 1
+                    : constraints.maxWidth < 800
+                    ? 2
+                    : 3;
+                final itemWidth =
+                    (constraints.maxWidth - ((columns - 1) * 12)) / columns;
+
+                return Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    SizedBox(
+                      width: itemWidth,
+                      child: _buildStatCard(
+                        'Connected',
+                        connectedCount,
+                        LucideIcons.radioReceiver,
+                      ),
+                    ),
+                    SizedBox(
+                      width: itemWidth,
+                      child: _buildStatCard(
+                        'Out of Range',
+                        outOfRangeCount,
+                        LucideIcons.mapPinOff,
+                      ),
+                    ),
+                    SizedBox(
+                      width: itemWidth,
+                      child: _buildStatCard(
+                        'Disconnected',
+                        disconnectedCount,
+                        LucideIcons.wifiOff,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOverviewPill({
+    required IconData icon,
+    required String label,
+    Color accentColor = const Color(0xFF1D4ED8),
+    Color backgroundColor = const Color(0xFFEFF6FF),
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: accentColor),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: accentColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchAndFilters({
+    required int totalTrackers,
+    required int connectedCount,
+    required int outOfRangeCount,
+    required int disconnectedCount,
+  }) {
+    final filters = [
+      (
+        'All',
+        'all',
+        totalTrackers,
+        LucideIcons.layoutList,
+        const Color(0xFF2563EB),
+      ),
+      (
+        'Connected',
+        'connected',
+        connectedCount,
+        LucideIcons.radioReceiver,
+        const Color(0xFF16A34A),
+      ),
+      (
+        'Out of Range',
+        'out-of-range',
+        outOfRangeCount,
+        LucideIcons.mapPinOff,
+        const Color(0xFFEA580C),
+      ),
+      (
+        'Disconnected',
+        'disconnected',
+        disconnectedCount,
+        LucideIcons.wifiOff,
+        const Color(0xFFDC2626),
+      ),
+    ];
+    final hasActiveCriteria = _searchQuery.isNotEmpty || _filter != 'all';
+    final compactSummary = _searchQuery.isNotEmpty
+        ? 'Search: "${_searchQuery.length > 18 ? '${_searchQuery.substring(0, 18)}...' : _searchQuery}"'
+        : _filter == 'all'
+        ? 'All devices'
+        : filters.firstWhere((filter) => filter.$2 == _filter).$1;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => setState(() => _filtersExpanded = !_filtersExpanded),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        LucideIcons.search,
+                        size: 16,
+                        color: Color(0xFF2563EB),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
-                            children: [
-                              Icon(LucideIcons.users, size: 20, color: Color(0xFF64748B)),
-                              SizedBox(width: 8),
-                              Text('Active Trackers', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Color(0xFF0F172A))),
-                            ],
+                          const Text(
+                            'Search & filters',
+                            style: TextStyle(
+                              color: Color(0xFF334155),
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                          Row(
-                            children: [
-                              Text('${filteredTrackers.length} devices', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-                              const SizedBox(width: 12),
-                              IconButton(
-                                icon: Icon(
-                                  _isGridView ? LucideIcons.list : LucideIcons.layoutGrid,
-                                  size: 20,
-                                  color: const Color(0xFF64748B),
-                                ),
-                                onPressed: () => setState(() => _isGridView = !_isGridView),
-                                tooltip: _isGridView ? 'List View' : 'Grid View',
-                              ),
-                            ],
+                          const SizedBox(height: 2),
+                          Text(
+                            compactSummary,
+                            style: TextStyle(
+                              color: hasActiveCriteria
+                                  ? const Color(0xFF2563EB)
+                                  : const Color(0xFF64748B),
+                              fontSize: 12,
+                              fontWeight: hasActiveCriteria
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      if (filteredTrackers.isEmpty)
-                        TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0.0, end: 1.0),
-                          duration: const Duration(milliseconds: 400),
-                          builder: (context, value, child) {
-                            return Opacity(opacity: value, child: child);
-                          },
-                          child: Center(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 40),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    LucideIcons.users,
-                                    size: 48,
-                                    color: const Color(0xFFCBD5E1),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  const Text('No trackers found',
-                                      style: TextStyle(
-                                        color: Color(0xFF64748B),
-                                        fontWeight: FontWeight.w500,
-                                      )),
-                                  const SizedBox(height: 4),
-                                  Text('Try adjusting your search or filters',
-                                      style: TextStyle(
-                                        color: const Color(0xFF94A3B8),
-                                        fontSize: 13,
-                                      )),
-                                ],
+                    ),
+                    if (hasActiveCriteria)
+                      TextButton(
+                        onPressed: () {
+                          _searchController.clear();
+                          _updateSearchQuery('');
+                          _updateFilter('all');
+                        },
+                        child: const Text('Clear'),
+                      ),
+                    AnimatedRotation(
+                      turns: _filtersExpanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: const Icon(
+                        LucideIcons.chevronDown,
+                        size: 18,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            AnimatedCrossFade(
+              firstChild: const SizedBox.shrink(),
+              secondChild: Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _searchController,
+                      onChanged: _updateSearchQuery,
+                      decoration: InputDecoration(
+                        hintText: 'Search by tracker name or device ID',
+                        prefixIcon: const Icon(
+                          LucideIcons.search,
+                          size: 18,
+                          color: Color(0xFF64748B),
+                        ),
+                        suffixIcon: _searchQuery.isEmpty
+                            ? null
+                            : IconButton(
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _updateSearchQuery('');
+                                },
+                                icon: const Icon(
+                                  LucideIcons.x,
+                                  size: 18,
+                                  color: Color(0xFF64748B),
+                                ),
                               ),
-                            ),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: filters.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 8,
+                            crossAxisSpacing: 8,
+                            childAspectRatio: 2.55,
                           ),
-                        )
-                      else if (_isGridView)
-                        _buildGridView(filteredTrackers)
-                      else
-                        _buildListView(filteredTrackers),
-                    ],
+                      itemBuilder: (context, index) {
+                        final filter = filters[index];
+                        return _buildFilterTile(
+                          label: filter.$1,
+                          value: filter.$2,
+                          count: filter.$3,
+                          icon: filter.$4,
+                          color: filter.$5,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              crossFadeState: _filtersExpanded
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
+              duration: const Duration(milliseconds: 200),
+              sizeCurve: Curves.easeInOut,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterTile({
+    required String label,
+    required String value,
+    required int count,
+    required IconData icon,
+    required Color color,
+  }) {
+    final isSelected = _filter == value;
+
+    return Material(
+      color: isSelected
+          ? color.withValues(alpha: 0.1)
+          : const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _updateFilter(value),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isSelected
+                  ? color.withValues(alpha: 0.55)
+                  : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? color.withValues(alpha: 0.16)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 15, color: color),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: const Color(0xFF334155),
+                        fontSize: 12,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$count devices',
+                      style: TextStyle(
+                        color: isSelected ? color : const Color(0xFF64748B),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrackersHeader(int filteredCount, bool isMobile) {
+    final countLabel = '$filteredCount device${filteredCount == 1 ? "" : "s"}';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFFFFF), Color(0xFFF8FBFF)],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFDCE8F8)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2563EB).withValues(alpha: 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Tracker library',
+                      style: TextStyle(
+                        color: Color(0xFF2563EB),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Active Trackers',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        countLabel,
+                        style: const TextStyle(
+                          color: Color(0xFF1D4ED8),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              _buildAddTrackerButton(isCompact: isMobile),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                const Text(
+                  'Display mode',
+                  style: TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                SizedBox(height: 44, child: _buildViewToggle(isMobile)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddTrackerButton({required bool isCompact}) {
+    return FilledButton.icon(
+      onPressed: () => context.push('/pairing'),
+      icon: const Icon(LucideIcons.plus, size: 16),
+      label: Text(isCompact ? 'Add' : 'Add Tracker'),
+      style: FilledButton.styleFrom(
+        backgroundColor: const Color(0xFF2563EB),
+        foregroundColor: Colors.white,
+        minimumSize: const Size(0, 46),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+
+  Widget _buildViewToggle(bool isMobile) {
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildViewToggleSegment(
+            label: 'List',
+            icon: LucideIcons.list,
+            isSelected: !_isGridView,
+            isLeading: true,
+            onTap: () => _updateViewMode(false),
+          ),
+          _buildViewToggleSegment(
+            label: isMobile ? 'Grid' : 'Cards',
+            icon: LucideIcons.layoutGrid,
+            isSelected: _isGridView,
+            isLeading: false,
+            onTap: () => _updateViewMode(true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildViewToggleSegment({
+    required String label,
+    required IconData icon,
+    required bool isSelected,
+    required bool isLeading,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.horizontal(
+          left: isLeading ? const Radius.circular(17) : Radius.zero,
+          right: isLeading ? Radius.zero : const Radius.circular(17),
+        ),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFFEFF6FF) : Colors.transparent,
+            borderRadius: BorderRadius.horizontal(
+              left: isLeading ? const Radius.circular(17) : Radius.zero,
+              right: isLeading ? Radius.zero : const Radius.circular(17),
+            ),
+            border: Border(
+              right: isLeading
+                  ? const BorderSide(color: Color(0xFFE2E8F0))
+                  : BorderSide.none,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: isSelected
+                    ? const Color(0xFF2563EB)
+                    : const Color(0xFF334155),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected
+                      ? const Color(0xFF2563EB)
+                      : const Color(0xFF334155),
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  height: 1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrackerCollection(List<Tracker> trackers) {
+    if (trackers.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+          child: Column(
+            children: const [
+              Icon(LucideIcons.users, size: 42, color: Color(0xFFCBD5E1)),
+              SizedBox(height: 16),
+              Text(
+                'No trackers match your filters',
+                style: TextStyle(
+                  color: Color(0xFF334155),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Try clearing the search field or switching to a different status.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Color(0xFF64748B), height: 1.4),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final totalPages = (trackers.length / _listPageSize).ceil();
+    final currentPage = totalPages == 0
+        ? 0
+        : _listPage.clamp(0, totalPages - 1);
+    final listTrackers = trackers
+        .skip(currentPage * _listPageSize)
+        .take(_listPageSize)
+        .toList();
+    final visibleGridCount = trackers.length <= _gridPageSize
+        ? trackers.length
+        : _visibleGridCount.clamp(_gridPageSize, trackers.length);
+    final gridTrackers = trackers.take(visibleGridCount).toList();
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      child: _isGridView
+          ? _buildGridView(
+              gridTrackers,
+              totalTrackers: trackers.length,
+              visibleCount: visibleGridCount,
+            )
+          : _buildListView(
+              listTrackers,
+              currentPage: currentPage,
+              totalPages: totalPages,
+              totalTrackers: trackers.length,
+            ),
+    );
+  }
+
+  Widget _buildStatCard(String title, int count, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: const Color(0xFF2563EB), size: 16),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AnimatedCounter(
+                  count: count,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                  ),
+                  duration: const Duration(milliseconds: 500),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -319,148 +900,143 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/pairing'),
-        backgroundColor: const Color(0xFF2563EB),
-        foregroundColor: Colors.white,
-        child: const Icon(LucideIcons.plus),
-      ),
-      bottomNavigationBar: AppBottomNavBar(currentPath: '/'),
-    );
-    },
     );
   }
 
-  Widget _buildStatCard(String title, int count, IconData icon) {
-    return Expanded(
-      child: TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.8, end: 1.0),
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeOutBack,
-        builder: (context, value, child) {
-          return Transform.scale(
-            scale: value,
-            child: Opacity(
-              opacity: value,
-              child: child,
+  Widget _buildListView(
+    List<Tracker> trackers, {
+    required int currentPage,
+    required int totalPages,
+    required int totalTrackers,
+  }) {
+    return Column(
+      key: const ValueKey('list-view'),
+      children: [
+        ...trackers.map(
+          (tracker) => TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.0, end: 1.0),
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOut,
+            builder: (context, value, child) {
+              return Transform.translate(
+                offset: Offset(0, 16 * (1 - value)),
+                child: Opacity(opacity: value, child: child),
+              );
+            },
+            child: TrackerCard(tracker: tracker),
+          ),
+        ),
+        if (totalPages > 1) ...[
+          const SizedBox(height: 8),
+          _buildListPagination(
+            currentPage: currentPage,
+            totalPages: totalPages,
+            totalTrackers: totalTrackers,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildGridView(
+    List<Tracker> trackers, {
+    required int totalTrackers,
+    required int visibleCount,
+  }) {
+    return Column(
+      key: const ValueKey('grid-view'),
+      children: [
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 14,
+            mainAxisExtent: 220,
+          ),
+          itemCount: trackers.length,
+          itemBuilder: (context, index) {
+            final tracker = trackers[index];
+
+            return TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: Duration(milliseconds: 250 + (40 * index)),
+              curve: Curves.easeOut,
+              builder: (context, value, child) {
+                return Transform.scale(
+                  scale: 0.96 + (0.04 * value),
+                  child: Opacity(opacity: value, child: child),
+                );
+              },
+              child: _buildGridCard(tracker),
+            );
+          },
+        ),
+        if (visibleCount < totalTrackers) ...[
+          const SizedBox(height: 14),
+          Center(
+            child: OutlinedButton.icon(
+              onPressed: () => _showMoreGridItems(totalTrackers),
+              icon: const Icon(LucideIcons.chevronsDown, size: 16),
+              label: Text('See more (${totalTrackers - visibleCount} left)'),
             ),
-          );
-        },
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.2)),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(icon, color: Colors.white.withOpacity(0.8), size: 16),
-                  const SizedBox(width: 8),
-                  Text(title, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              AnimatedCounter(
-                count: count,
-                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                duration: const Duration(milliseconds: 800),
-              ),
-            ],
-          ),
-        ),
-      ),
+        ],
+      ],
     );
   }
 
-  Widget _buildFilterChip(String label, String value) {
-    final isSelected = _filter == value;
-    return InkWell(
-      onTap: () => setState(() => _filter = value),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF2563EB) : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? Colors.white : const Color(0xFF64748B),
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _buildListPagination({
+    required int currentPage,
+    required int totalPages,
+    required int totalTrackers,
+  }) {
+    final start = (currentPage * _listPageSize) + 1;
+    final end = ((currentPage + 1) * _listPageSize).clamp(0, totalTrackers);
 
-  Widget _buildListView(List<Tracker> trackers) {
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: trackers.length,
-      itemBuilder: (context, index) {
-        final tracker = trackers[index];
-        
-        return TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0.0, end: 1.0),
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeOut,
-          builder: (context, value, child) {
-            return Transform.translate(
-              offset: Offset(0, 20 * (1 - value)),
-              child: Opacity(
-                opacity: value,
-                child: child,
-              ),
-            );
-          },
-          child: TrackerCard(tracker: tracker),
-        );
-      },
-    );
-  }
-
-  Widget _buildGridView(List<Tracker> trackers) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.1,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      itemCount: trackers.length,
-      itemBuilder: (context, index) {
-        final tracker = trackers[index];
-        
-        return TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0.0, end: 1.0),
-          duration: Duration(milliseconds: 300 + (50 * index)),
-          curve: Curves.easeOut,
-          builder: (context, value, child) {
-            return Transform.scale(
-              scale: value,
-              child: Opacity(
-                opacity: value,
-                child: child,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Showing $start-$end of $totalTrackers',
+              style: const TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
               ),
-            );
-          },
-          child: _buildGridCard(tracker),
-        );
-      },
+            ),
+          ),
+          IconButton(
+            onPressed: currentPage == 0
+                ? null
+                : () => _goToListPage(currentPage - 1),
+            icon: const Icon(LucideIcons.chevronLeft, size: 18),
+            tooltip: 'Previous page',
+          ),
+          Text(
+            '${currentPage + 1}/$totalPages',
+            style: const TextStyle(
+              color: Color(0xFF334155),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          IconButton(
+            onPressed: currentPage >= totalPages - 1
+                ? null
+                : () => _goToListPage(currentPage + 1),
+            icon: const Icon(LucideIcons.chevronRight, size: 18),
+            tooltip: 'Next page',
+          ),
+        ],
+      ),
     );
   }
 
@@ -485,69 +1061,80 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         side: const BorderSide(color: Color(0xFFE2E8F0)),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         onTap: () => context.push('/tracker/${tracker.id}'),
-        splashColor: const Color(0xFF2563EB).withOpacity(0.1),
+        splashColor: const Color(0xFF2563EB).withValues(alpha: 0.1),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(8),
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(LucideIcons.radio, size: 24, color: Color(0xFF2563EB)),
+                child: const Icon(
+                  LucideIcons.radioReceiver,
+                  size: 22,
+                  color: Color(0xFF2563EB),
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               Expanded(
                 child: Text(
                   tracker.name,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: Color(0xFF0F172A),
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  color: statusColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(999),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 4,
-                      height: 4,
+                      width: 6,
+                      height: 6,
                       decoration: BoxDecoration(
                         color: statusColor,
                         shape: BoxShape.circle,
                       ),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 6),
                     Text(
                       statusText,
                       style: TextStyle(
                         color: statusColor,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
-                'ID: ${tracker.deviceId}',
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
+                tracker.deviceId,
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),

@@ -1,59 +1,73 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:my_flutter_app/core/auth_provider.dart';
 import 'package:my_flutter_app/core/app_preferences_provider.dart';
-import 'package:my_flutter_app/screens/login_screen.dart';
-import 'package:my_flutter_app/screens/dashboard_screen.dart';
-import 'package:my_flutter_app/screens/pairing_screen.dart';
-import 'package:my_flutter_app/screens/tracker_detail_screen.dart';
 import 'package:my_flutter_app/screens/alerts_screen.dart';
+import 'package:my_flutter_app/screens/dashboard_screen.dart';
+import 'package:my_flutter_app/screens/profile_screen.dart';
 import 'package:my_flutter_app/screens/settings_screen.dart';
 import 'package:my_flutter_app/screens/onboarding_screen.dart';
+import 'package:my_flutter_app/screens/pairing_screen.dart';
+import 'package:my_flutter_app/screens/tracker_detail_screen.dart';
+import 'package:my_flutter_app/widgets/app_tab_shell.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-GoRouter createRouter(
-  AuthProvider authProvider,
-  AppPreferencesProvider preferencesProvider,
-) {
+GoRouter createRouter(AppPreferencesProvider preferencesProvider) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/',
-    refreshListenable: Listenable.merge([authProvider, preferencesProvider]),
+    refreshListenable: preferencesProvider,
     redirect: (context, state) {
-      final isLoggedIn = authProvider.isAuthenticated;
-      final isLoggingIn = state.matchedLocation == '/login';
       final hasCompletedOnboarding = preferencesProvider.onboardingCompleted;
       final isOnboarding = state.matchedLocation == '/onboarding';
 
-      // If not logged in and not already on login page, go to login
-      if (!isLoggedIn && !isLoggingIn) return '/login';
-
-      // If logged in and on login page, go to dashboard (or onboarding if first time)
-      if (isLoggedIn && isLoggingIn) {
-        return hasCompletedOnboarding ? '/' : '/onboarding';
-      }
-
-      // If logged in and hasn't completed onboarding, show onboarding
-      if (isLoggedIn && !hasCompletedOnboarding && !isOnboarding) {
+      if (!hasCompletedOnboarding && !isOnboarding) {
         return '/onboarding';
       }
 
-      // If logged in and completed onboarding but on onboarding page, go to dashboard
-      if (isLoggedIn && hasCompletedOnboarding && isOnboarding) {
+      if (hasCompletedOnboarding && isOnboarding) {
         return '/';
       }
 
       return null;
     },
     routes: [
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            AppTabShell(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/',
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: DashboardScreen()),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/alerts',
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: AlertsScreen()),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/profile',
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: ProfileScreen()),
+              ),
+            ],
+          ),
+        ],
       ),
       GoRoute(
-        path: '/',
-        builder: (context, state) => const DashboardScreen(),
+        path: '/settings',
+        builder: (context, state) => const SettingsScreen(),
       ),
       GoRoute(
         path: '/pairing',
@@ -65,14 +79,6 @@ GoRouter createRouter(
           final id = state.pathParameters['id']!;
           return TrackerDetailScreen(trackerId: id);
         },
-      ),
-      GoRoute(
-        path: '/alerts',
-        builder: (context, state) => const AlertsScreen(),
-      ),
-      GoRoute(
-        path: '/settings',
-        builder: (context, state) => const SettingsScreen(),
       ),
       GoRoute(
         path: '/onboarding',
