@@ -17,7 +17,7 @@ class AppBottomNavBar extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFF1F5F9),
         border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
         boxShadow: [
           BoxShadow(
@@ -37,7 +37,7 @@ class AppBottomNavBar extends StatelessWidget {
               height: 72,
               selectedIndex: selectedIndex,
               onDestinationSelected: onDestinationSelected,
-              backgroundColor: const Color(0xFFF8FAFC),
+              backgroundColor: Colors.white,
               indicatorColor: const Color(0xFFDBEAFE),
               labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
               destinations: const [
@@ -52,9 +52,9 @@ class AppBottomNavBar extends StatelessWidget {
                   label: 'Alerts',
                 ),
                 NavigationDestination(
-                  icon: Icon(LucideIcons.settings),
-                  selectedIcon: Icon(LucideIcons.settings2),
-                  label: 'Settings',
+                  icon: Icon(LucideIcons.userRound),
+                  selectedIcon: Icon(LucideIcons.userRoundCog),
+                  label: 'Profile',
                 ),
               ],
             ),

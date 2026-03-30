@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/core/app_preferences_provider.dart';
-import 'package:my_flutter_app/core/auth_provider.dart';
 import 'package:my_flutter_app/core/theme_provider.dart';
 import 'package:my_flutter_app/widgets/app_page_layout.dart';
 import 'package:provider/provider.dart';
@@ -13,30 +12,34 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = context.watch<AuthProvider>().user;
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        title: const Text('Settings'),
+        centerTitle: false,
+        backgroundColor: const Color(0xFFF1F5F9),
+        surfaceTintColor: const Color(0xFFF1F5F9),
+        elevation: 0,
+        leading: IconButton(
+          onPressed: () => context.pop(),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+      ),
       body: SafeArea(
         top: false,
-        bottom: false,
         child: ListView(
           physics: const BouncingScrollPhysics(),
           children: [
             AppPageLayout(
-              includeBottomSafeArea: false,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildProfileCard(user),
-                  const SizedBox(height: 24),
                   _buildSectionTitle('Appearance'),
                   _buildThemeCard(context),
                   const SizedBox(height: 24),
-                  _buildSectionTitle('Help & Support'),
+                  _buildSectionTitle('Guidance'),
                   _buildActionCard(
-                    icon: Icons.help_outline,
+                    icon: Icons.play_circle_outline_rounded,
                     iconColor: const Color(0xFF2563EB),
                     backgroundColor: const Color(0xFFEFF6FF),
                     title: 'Replay onboarding',
@@ -50,20 +53,20 @@ class SettingsScreen extends StatelessWidget {
                     },
                   ),
                   const SizedBox(height: 16),
-                  _buildSectionTitle('Local Session'),
                   _buildActionCard(
-                    icon: LucideIcons.userRoundCog,
+                    icon: LucideIcons.shieldCheck,
                     iconColor: const Color(0xFF0F766E),
                     backgroundColor: const Color(0xFFECFDF5),
-                    title: 'Restore default profile',
+                    title: 'System defaults',
                     subtitle:
-                        'Reset the local session without showing a login page.',
+                        'The app keeps a local session and no longer requires a login screen.',
                     onTap: () {
-                      HapticFeedback.mediumImpact();
-                      context.read<AuthProvider>().resetLocalSession();
+                      HapticFeedback.selectionClick();
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Default profile restored'),
+                          content: Text(
+                            'Local session mode is already enabled',
+                          ),
                           behavior: SnackBarBehavior.floating,
                         ),
                       );
@@ -74,67 +77,6 @@ class SettingsScreen extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildProfileCard(User? user) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        children: [
-          const CircleAvatar(
-            radius: 28,
-            backgroundColor: Color(0xFF2563EB),
-            child: Icon(LucideIcons.userRound, color: Colors.white),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  user?.name ?? 'Local User',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  user?.email ?? 'local@tracker.app',
-                  style: const TextStyle(color: Color(0xFF64748B)),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    (user?.role ?? 'local').toUpperCase(),
-                    style: const TextStyle(
-                      color: Color(0xFF1D4ED8),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

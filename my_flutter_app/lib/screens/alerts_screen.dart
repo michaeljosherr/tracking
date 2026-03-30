@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/core/tracker_provider.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:my_flutter_app/widgets/app_page_layout.dart';
+import 'package:my_flutter_app/widgets/app_top_bar.dart';
 import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
@@ -18,28 +19,35 @@ class AlertsScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(title: const Text('Alerts')),
       body: SafeArea(
-        top: false,
         bottom: false,
-        child: ListView(
-          physics: const BouncingScrollPhysics(),
+        child: Column(
           children: [
-            AppPageLayout(
-              includeBottomSafeArea: false,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            const AppTopBar(
+              title: 'Alerts',
+              subtitle: 'Review recent tracker events and jump to details.',
+            ),
+            Expanded(
+              child: ListView(
+                physics: const BouncingScrollPhysics(),
                 children: [
-                  _buildSummaryCard(alerts.length, unreadCount),
-                  const SizedBox(height: 20),
-                  if (alerts.isEmpty)
-                    _buildEmptyState()
-                  else
-                    Column(
-                      children: alerts
-                          .map((alert) => _buildAlertCard(context, alert))
-                          .toList(),
+                  AppPageLayout(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSummaryCard(alerts.length, unreadCount),
+                        const SizedBox(height: 20),
+                        if (alerts.isEmpty)
+                          _buildEmptyState()
+                        else
+                          Column(
+                            children: alerts
+                                .map((alert) => _buildAlertCard(context, alert))
+                                .toList(),
+                          ),
+                      ],
                     ),
+                  ),
                 ],
               ),
             ),

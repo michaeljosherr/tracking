@@ -5,10 +5,10 @@ import 'package:my_flutter_app/core/tracker_provider.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:my_flutter_app/widgets/animated_widgets.dart';
 import 'package:my_flutter_app/widgets/app_page_layout.dart';
+import 'package:my_flutter_app/widgets/app_top_bar.dart';
 import 'package:my_flutter_app/widgets/responsive_helper.dart';
 import 'package:my_flutter_app/widgets/tracker_card.dart';
 import 'package:provider/provider.dart';
-import 'package:timeago/timeago.dart' as timeago;
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -17,53 +17,7 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _AlertsMenuCaret extends StatelessWidget {
-  const _AlertsMenuCaret();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 20,
-      height: 12,
-      child: CustomPaint(painter: _AlertsMenuCaretPainter()),
-    );
-  }
-}
-
-class _AlertsMenuCaretPainter extends CustomPainter {
-  const _AlertsMenuCaretPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final fillPaint = Paint()..color = Colors.white;
-    final borderPaint = Paint()
-      ..color = const Color(0xFFE2E8F0)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-
-    final path = Path()
-      ..moveTo(size.width / 2, 0)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-
-    canvas.drawPath(path, fillPaint);
-
-    final borderPath = Path()
-      ..moveTo(size.width / 2, 0.5)
-      ..lineTo(size.width - 0.5, size.height - 0.5)
-      ..moveTo(size.width / 2, 0.5)
-      ..lineTo(0.5, size.height - 0.5);
-
-    canvas.drawPath(borderPath, borderPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 class _DashboardScreenState extends State<DashboardScreen> {
-  final GlobalKey _alertsMenuAnchorKey = GlobalKey();
   final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = '';
@@ -82,14 +36,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Consumer<TrackerProvider>(
       builder: (context, trackerProvider, child) {
         final trackers = trackerProvider.trackers;
-        final alerts = List<Alert>.from(trackerProvider.alerts)
-          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        final unreadAlerts = alerts
-            .where((alert) => !alert.acknowledged)
-            .toList();
-        final menuAlerts = (unreadAlerts.isNotEmpty ? unreadAlerts : alerts)
-            .take(3)
-            .toList();
         final connectedCount = trackerProvider.connectedCount;
         final outOfRangeCount = trackerProvider.outOfRangeCount;
         final disconnectedCount = trackerProvider.disconnectedCount;
@@ -116,47 +62,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
           backgroundColor: const Color(0xFFF8FAFC),
           body: SafeArea(
             bottom: false,
-            child: RefreshIndicator(
-              onRefresh: () async {
-                await Future.delayed(const Duration(milliseconds: 500));
-                if (!mounted) return;
-                trackerProvider.refreshTrackers();
-              },
-              color: const Color(0xFF2563EB),
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
+            child: Column(
+              children: [
+                const AppTopBar(
+                  title: 'Dashboard',
+                  subtitle:
+                      'Monitor tracker health, alerts, and recent activity.',
                 ),
-                children: [
-                  AppPageLayout(
-                    includeBottomSafeArea: false,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: () async {
+                      await Future.delayed(const Duration(milliseconds: 500));
+                      if (!mounted) return;
+                      trackerProvider.refreshTrackers();
+                    },
+                    color: const Color(0xFF2563EB),
+                    child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
                       children: [
-                        _buildHeader(
-                          recentAlerts: menuAlerts,
-                          totalTrackers: trackers.length,
-                          connectedCount: connectedCount,
-                          outOfRangeCount: outOfRangeCount,
-                          disconnectedCount: disconnectedCount,
-                          activeAlerts: activeAlerts.length,
+                        AppPageLayout(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildHeader(
+                                totalTrackers: trackers.length,
+                                connectedCount: connectedCount,
+                                outOfRangeCount: outOfRangeCount,
+                                disconnectedCount: disconnectedCount,
+                                activeAlerts: activeAlerts.length,
+                              ),
+                              const SizedBox(height: 12),
+                              _buildSearchAndFilters(
+                                totalTrackers: trackers.length,
+                                connectedCount: connectedCount,
+                                outOfRangeCount: outOfRangeCount,
+                                disconnectedCount: disconnectedCount,
+                              ),
+                              const SizedBox(height: 18),
+                              _buildTrackersHeader(
+                                filteredTrackers.length,
+                                isMobile,
+                              ),
+                              const SizedBox(height: 12),
+                              _buildTrackerCollection(filteredTrackers),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 12),
-                        _buildSearchAndFilters(
-                          totalTrackers: trackers.length,
-                          connectedCount: connectedCount,
-                          outOfRangeCount: outOfRangeCount,
-                          disconnectedCount: disconnectedCount,
-                        ),
-                        const SizedBox(height: 18),
-                        _buildTrackersHeader(filteredTrackers.length, isMobile),
-                        const SizedBox(height: 12),
-                        _buildTrackerCollection(filteredTrackers),
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
           floatingActionButton: FloatingActionButton.extended(
@@ -172,7 +130,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildHeader({
-    required List<Alert> recentAlerts,
     required int totalTrackers,
     required int connectedCount,
     required int outOfRangeCount,
@@ -198,73 +155,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: Color(0xFFEFF6FF),
-                              borderRadius: BorderRadius.all(
-                                Radius.circular(12),
-                              ),
-                            ),
-                            child: Padding(
-                              padding: EdgeInsets.all(9),
-                              child: Icon(
-                                LucideIcons.radioReceiver,
-                                size: 18,
-                                color: Color(0xFF2563EB),
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Tracker Dashboard',
-                              style: TextStyle(
-                                color: Color(0xFF0F172A),
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 6),
-                      Text(
-                        'See tracker health, active issues, and recent device status in one compact view.',
-                        style: TextStyle(
-                          color: Color(0xFF64748B),
-                          fontSize: 13,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
+                const Text(
+                  'Overview',
+                  style: TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(width: 10),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildAlertsMenuButton(
-                      recentAlerts: recentAlerts,
-                      badgeCount: activeAlerts,
+                const Spacer(),
+                if (activeAlerts > 0)
+                  const Text(
+                    'Needs attention',
+                    style: TextStyle(
+                      color: Color(0xFFB91C1C),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(width: 8),
-                    _buildHeaderAction(
-                      icon: LucideIcons.settings,
-                      onPressed: () => context.go('/settings'),
-                    ),
-                  ],
-                ),
+                  ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -332,436 +244,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeaderAction({
-    required IconData icon,
-    int badgeCount = 0,
-    required VoidCallback onPressed,
-  }) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Material(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
-            onTap: onPressed,
-            borderRadius: BorderRadius.circular(14),
-            child: SizedBox(
-              width: 40,
-              height: 40,
-              child: Center(
-                child: Icon(icon, color: const Color(0xFF334155), size: 18),
-              ),
-            ),
-          ),
-        ),
-        if (badgeCount > 0)
-          Positioned(
-            top: -4,
-            right: -4,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEF4444),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: Colors.white, width: 2),
-              ),
-              child: Text(
-                '$badgeCount',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildAlertsMenuButton({
-    required List<Alert> recentAlerts,
-    required int badgeCount,
-  }) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Material(
-          key: _alertsMenuAnchorKey,
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
-            onTap: () => _showAlertsMenu(recentAlerts, badgeCount),
-            borderRadius: BorderRadius.circular(14),
-            child: const SizedBox(
-              width: 40,
-              height: 40,
-              child: Center(
-                child: Icon(
-                  LucideIcons.bell,
-                  color: Color(0xFF334155),
-                  size: 18,
-                ),
-              ),
-            ),
-          ),
-        ),
-        if (badgeCount > 0)
-          Positioned(
-            top: -4,
-            right: -4,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEF4444),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: Colors.white, width: 2),
-              ),
-              child: Text(
-                '$badgeCount',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Future<void> _showAlertsMenu(
-    List<Alert> recentAlerts,
-    int unreadCount,
-  ) async {
-    final anchorContext = _alertsMenuAnchorKey.currentContext;
-    if (anchorContext == null) return;
-
-    final button = anchorContext.findRenderObject() as RenderBox;
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-
-    const menuWidth = 296.0;
-    const screenPadding = 12.0;
-    final buttonTopLeft = button.localToGlobal(Offset.zero, ancestor: overlay);
-    final left = (buttonTopLeft.dx + button.size.width - menuWidth)
-        .clamp(screenPadding, overlay.size.width - menuWidth - screenPadding)
-        .toDouble();
-    final top = buttonTopLeft.dy + button.size.height + 12;
-    final caretLeft = (buttonTopLeft.dx + (button.size.width / 2) - left - 8)
-        .clamp(18.0, menuWidth - 34.0)
-        .toDouble();
-
-    final selectedValue = await showGeneralDialog<String>(
-      context: context,
-      barrierLabel: 'Recent alerts',
-      barrierDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: 0.08),
-      transitionDuration: const Duration(milliseconds: 160),
-      pageBuilder: (dialogContext, _, _) {
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(dialogContext).pop(),
-              ),
-            ),
-            Positioned(
-              left: left,
-              top: top,
-              width: menuWidth,
-              child: _buildAlertsMenuPanel(
-                dialogContext: dialogContext,
-                recentAlerts: recentAlerts,
-                unreadCount: unreadCount,
-                caretLeft: caretLeft,
-              ),
-            ),
-          ],
-        );
-      },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(
-          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-          child: ScaleTransition(
-            alignment: Alignment.topRight,
-            scale: Tween<double>(begin: 0.96, end: 1.0).animate(
-              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-            ),
-            child: child,
-          ),
-        );
-      },
-    );
-
-    if (!mounted || selectedValue == null) return;
-
-    if (selectedValue == 'mark-all') {
-      context.read<TrackerProvider>().acknowledgeAllAlerts();
-      return;
-    }
-
-    if (selectedValue == 'view-all') {
-      context.go('/alerts');
-      return;
-    }
-
-    if (selectedValue.startsWith('tracker:')) {
-      final trackerId = selectedValue.replaceFirst('tracker:', '');
-      context.push('/tracker/$trackerId');
-    }
-  }
-
-  Widget _buildAlertsMenuPanel({
-    required BuildContext dialogContext,
-    required List<Alert> recentAlerts,
-    required int unreadCount,
-    required double caretLeft,
-  }) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: Material(
-            color: Colors.white,
-            surfaceTintColor: Colors.white,
-            elevation: 14,
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildAlertsMenuHeader(recentAlerts.length, unreadCount),
-                  if (recentAlerts.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 6, 16, 14),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'No recent alerts',
-                          style: TextStyle(color: Color(0xFF64748B)),
-                        ),
-                      ),
-                    )
-                  else
-                    ...recentAlerts.map(
-                      (alert) => _buildAlertMenuTile(
-                        alert: alert,
-                        onTap: () => Navigator.of(
-                          dialogContext,
-                        ).pop('tracker:${alert.trackerId}'),
-                      ),
-                    ),
-                  if (unreadCount > 0) ...[
-                    const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                    _buildAlertsMenuAction(
-                      icon: LucideIcons.checkCheck,
-                      label: 'Mark all as read',
-                      color: const Color(0xFF0F766E),
-                      onTap: () => Navigator.of(dialogContext).pop('mark-all'),
-                    ),
-                  ],
-                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                  _buildAlertsMenuAction(
-                    icon: LucideIcons.list,
-                    label: 'View all alerts',
-                    color: const Color(0xFF2563EB),
-                    onTap: () => Navigator.of(dialogContext).pop('view-all'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(top: 1, left: caretLeft, child: const _AlertsMenuCaret()),
-      ],
-    );
-  }
-
-  Widget _buildAlertsMenuHeader(int totalShown, int unreadCount) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-      child: Row(
-        children: [
-          const Text(
-            'Recent alerts',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 15,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: unreadCount > 0
-                  ? const Color(0xFFFEF2F2)
-                  : const Color(0xFFEFF6FF),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              unreadCount > 0 ? '$unreadCount unread' : '$totalShown shown',
-              style: TextStyle(
-                color: unreadCount > 0
-                    ? const Color(0xFFDC2626)
-                    : const Color(0xFF2563EB),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAlertsMenuAction({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(color: color, fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAlertMenuTile({
-    required Alert alert,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: _buildAlertMenuRow(alert),
-      ),
-    );
-  }
-
-  Widget _buildAlertMenuRow(Alert alert) {
-    final accentColor = switch (alert.type) {
-      'disconnected' => const Color(0xFFDC2626),
-      'out-of-range' => const Color(0xFFEA580C),
-      _ => const Color(0xFF16A34A),
-    };
-
-    final icon = switch (alert.type) {
-      'disconnected' => LucideIcons.wifiOff,
-      'out-of-range' => LucideIcons.mapPinOff,
-      _ => LucideIcons.badgeCheck,
-    };
-
-    return Container(
-      width: 268,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(14)),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 16, color: accentColor),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        alert.trackerName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                    ),
-                    if (!alert.acknowledged)
-                      Container(
-                        margin: const EdgeInsets.only(left: 8),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: accentColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'Unread',
-                          style: TextStyle(
-                            color: accentColor,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  alert.message,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF475569),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  timeago.format(alert.timestamp),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF94A3B8),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 6),
-          const Icon(
-            LucideIcons.chevronRight,
-            size: 16,
-            color: Color(0xFFCBD5E1),
-          ),
-        ],
       ),
     );
   }
