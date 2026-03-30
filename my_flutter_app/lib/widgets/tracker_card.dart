@@ -88,13 +88,13 @@ class TrackerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         side: const BorderSide(color: Color(0xFFE2E8F0)),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         onTap: () {
           HapticFeedback.lightImpact();
           context.push('/tracker/${tracker.id}');
@@ -102,7 +102,7 @@ class TrackerCard extends StatelessWidget {
         splashColor: const Color(0xFF2563EB).withValues(alpha: 0.1),
         highlightColor: const Color(0xFF2563EB).withValues(alpha: 0.05),
         child: Padding(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(14),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final isCompact = constraints.maxWidth < 420;
@@ -111,17 +111,17 @@ class TrackerCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (isCompact) _buildCompactHeader() else _buildWideHeader(),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
                   _buildSignalSection(),
                   if (tracker.rssi != null ||
                       tracker.distance != null ||
                       tracker.serialNumber != null) ...[
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     Wrap(
-                      spacing: 24,
-                      runSpacing: 12,
+                      spacing: 18,
+                      runSpacing: 10,
                       children: [
                         _buildMetric(
                           'RSSI',
@@ -157,11 +157,11 @@ class TrackerCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(child: _buildDeviceSummary()),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             _buildSignalBatteryPill(),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         _buildStatusChip(),
       ],
     );
@@ -172,12 +172,12 @@ class TrackerCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(child: _buildDeviceSummary()),
-        const SizedBox(width: 16),
+        const SizedBox(width: 12),
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             _buildStatusChip(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             _buildSignalBatteryPill(),
           ],
         ),
@@ -193,14 +193,14 @@ class TrackerCard extends StatelessWidget {
           tracker.name,
           style: const TextStyle(
             fontWeight: FontWeight.w700,
-            fontSize: 17,
+            fontSize: 16,
             color: Color(0xFF0F172A),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           'Device ID: ${tracker.deviceId}',
-          style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+          style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
         ),
         const SizedBox(height: 4),
         Text(
@@ -213,7 +213,7 @@ class TrackerCard extends StatelessWidget {
 
   Widget _buildStatusChip() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
         color: _getStatusBackgroundColor(),
         borderRadius: BorderRadius.circular(999),
@@ -234,7 +234,7 @@ class TrackerCard extends StatelessWidget {
             _getStatusText().toUpperCase(),
             style: TextStyle(
               color: _getStatusColor(),
-              fontSize: 10,
+              fontSize: 9,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.5,
             ),
@@ -246,10 +246,10 @@ class TrackerCard extends StatelessWidget {
 
   Widget _buildSignalBatteryPill() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -263,7 +263,7 @@ class TrackerCard extends StatelessWidget {
               '${tracker.batteryLevel}%',
               style: const TextStyle(
                 color: Color(0xFF475569),
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -289,7 +289,7 @@ class TrackerCard extends StatelessWidget {
               'Signal Strength',
               style: TextStyle(
                 color: Color(0xFF64748B),
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -298,20 +298,20 @@ class TrackerCard extends StatelessWidget {
               '${tracker.signalStrength}%',
               style: const TextStyle(
                 color: Color(0xFF334155),
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         ClipRRect(
           borderRadius: BorderRadius.circular(999),
           child: LinearProgressIndicator(
             value: tracker.signalStrength / 100,
             backgroundColor: const Color(0xFFF1F5F9),
             color: signalColor,
-            minHeight: 9,
+            minHeight: 7,
           ),
         ),
       ],
@@ -326,7 +326,7 @@ class TrackerCard extends StatelessWidget {
           label,
           style: const TextStyle(
             color: Color(0xFF64748B),
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -335,7 +335,7 @@ class TrackerCard extends StatelessWidget {
           value,
           style: const TextStyle(
             color: Color(0xFF0F172A),
-            fontSize: 13,
+            fontSize: 12,
             fontWeight: FontWeight.w700,
           ),
         ),
