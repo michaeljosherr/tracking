@@ -17,6 +17,51 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
+class _AlertsMenuCaret extends StatelessWidget {
+  const _AlertsMenuCaret();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 20,
+      height: 12,
+      child: CustomPaint(painter: _AlertsMenuCaretPainter()),
+    );
+  }
+}
+
+class _AlertsMenuCaretPainter extends CustomPainter {
+  const _AlertsMenuCaretPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final fillPaint = Paint()..color = Colors.white;
+    final borderPaint = Paint()
+      ..color = const Color(0xFFE2E8F0)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+
+    final path = Path()
+      ..moveTo(size.width / 2, 0)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    canvas.drawPath(path, fillPaint);
+
+    final borderPath = Path()
+      ..moveTo(size.width / 2, 0.5)
+      ..lineTo(size.width - 0.5, size.height - 0.5)
+      ..moveTo(size.width / 2, 0.5)
+      ..lineTo(0.5, size.height - 0.5);
+
+    canvas.drawPath(borderPath, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class _DashboardScreenState extends State<DashboardScreen> {
   final GlobalKey _alertsMenuAnchorKey = GlobalKey();
   final TextEditingController _searchController = TextEditingController();
@@ -482,83 +527,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Positioned(
-          top: -8,
-          left: caretLeft,
-          child: Transform.rotate(
-            angle: 0.785398,
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Material(
+            color: Colors.white,
+            surfaceTintColor: Colors.white,
+            elevation: 14,
+            borderRadius: BorderRadius.circular(20),
             child: Container(
-              width: 16,
-              height: 16,
               decoration: BoxDecoration(
-                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
-                borderRadius: BorderRadius.circular(4),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildAlertsMenuHeader(recentAlerts.length, unreadCount),
+                  if (recentAlerts.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 6, 16, 14),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'No recent alerts',
+                          style: TextStyle(color: Color(0xFF64748B)),
+                        ),
+                      ),
+                    )
+                  else
+                    ...recentAlerts.map(
+                      (alert) => _buildAlertMenuTile(
+                        alert: alert,
+                        onTap: () => Navigator.of(
+                          dialogContext,
+                        ).pop('tracker:${alert.trackerId}'),
+                      ),
+                    ),
+                  if (unreadCount > 0) ...[
+                    const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                    _buildAlertsMenuAction(
+                      icon: LucideIcons.checkCheck,
+                      label: 'Mark all as read',
+                      color: const Color(0xFF0F766E),
+                      onTap: () => Navigator.of(dialogContext).pop('mark-all'),
+                    ),
+                  ],
+                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                  _buildAlertsMenuAction(
+                    icon: LucideIcons.list,
+                    label: 'View all alerts',
+                    color: const Color(0xFF2563EB),
+                    onTap: () => Navigator.of(dialogContext).pop('view-all'),
                   ),
                 ],
               ),
             ),
           ),
         ),
-        Material(
-          color: Colors.white,
-          surfaceTintColor: Colors.white,
-          elevation: 14,
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildAlertsMenuHeader(recentAlerts.length, unreadCount),
-                if (recentAlerts.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 6, 16, 14),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'No recent alerts',
-                        style: TextStyle(color: Color(0xFF64748B)),
-                      ),
-                    ),
-                  )
-                else
-                  ...recentAlerts.map(
-                    (alert) => _buildAlertMenuTile(
-                      alert: alert,
-                      onTap: () => Navigator.of(
-                        dialogContext,
-                      ).pop('tracker:${alert.trackerId}'),
-                    ),
-                  ),
-                if (unreadCount > 0) ...[
-                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                  _buildAlertsMenuAction(
-                    icon: LucideIcons.checkCheck,
-                    label: 'Mark all as read',
-                    color: const Color(0xFF0F766E),
-                    onTap: () => Navigator.of(dialogContext).pop('mark-all'),
-                  ),
-                ],
-                const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                _buildAlertsMenuAction(
-                  icon: LucideIcons.list,
-                  label: 'View all alerts',
-                  color: const Color(0xFF2563EB),
-                  onTap: () => Navigator.of(dialogContext).pop('view-all'),
-                ),
-              ],
-            ),
-          ),
-        ),
+        Positioned(top: 1, left: caretLeft, child: const _AlertsMenuCaret()),
       ],
     );
   }
