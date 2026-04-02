@@ -44,6 +44,12 @@ class TrackerProvider with ChangeNotifier {
   Future<void> initialize() async {
     await _loadTrackers();
     print('[TrackerProvider] Initialized with ${_trackers.length} saved tracker(s)');
+    
+    // Auto-start background scanning if trackers are loaded
+    if (_trackers.isNotEmpty) {
+      print('[TrackerProvider] Auto-starting background scanning after loading ${_trackers.length} tracker(s)');
+      await startBackgroundScanning();
+    }
   }
 
   /// Load trackers from SharedPreferences
@@ -196,7 +202,8 @@ class TrackerProvider with ChangeNotifier {
 
     for (final scanned in scannedTrackers) {
       final distanceStr = scanned.distance != null ? scanned.distance!.toStringAsFixed(2) : 'null';
-      print('[TrackerProvider] Processing scanned: ${scanned.serialNumber}, RSSI: ${scanned.rssi}, Filtered: ${scanned.rssiFiltered.toStringAsFixed(1)}, Distance: ${distanceStr}m');
+      final filteredRssiStr = scanned.rssiFiltered != null ? scanned.rssiFiltered!.toStringAsFixed(1) : 'null';
+      print('[TrackerProvider] Processing scanned: ${scanned.serialNumber}, RSSI: ${scanned.rssi}, Filtered: $filteredRssiStr, Distance: ${distanceStr}m');
       
       // Find matching registered tracker by serial number
       final index = _trackers.indexWhere(

@@ -33,9 +33,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    // Start background scanning when dashboard loads
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await context.read<TrackerProvider>().startBackgroundScanning();
+    // Background scanning is auto-started by TrackerProvider.initialize()
+    // when trackers are loaded, but we can also start it here if needed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = context.read<TrackerProvider>();
+      // Only start if not already scanning and trackers exist
+      if (!provider.isBackgroundScanning && provider.trackers.isNotEmpty) {
+        provider.startBackgroundScanning();
+      }
     });
   }
 
