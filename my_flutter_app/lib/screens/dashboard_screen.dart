@@ -640,7 +640,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'Active Trackers',
+                      'Registered Trackers',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w800,

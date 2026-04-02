@@ -400,7 +400,7 @@ class _TrackerCardState extends State<TrackerCard> {
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
-        onPressed: _isPinging ? null : _handlePing,
+        onPressed: (_isPinging || widget.tracker.status == TrackerStatus.disconnected) ? null : _handlePing,
         icon: _isPinging
             ? SizedBox(
           width: 18,

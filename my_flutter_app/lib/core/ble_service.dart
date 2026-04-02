@@ -350,7 +350,7 @@ class BleService {
       _isContinuousScanRunning = true;
       _continuousScanCallback = onTrackerUpdate;
 
-      print('[BleService] ✓ Starting continuous BLE scanning (1s cycles)...');
+      print('[BleService] ✓ Starting continuous BLE scanning (5s cycles)...');
       
       // Set up listener for scan results BEFORE starting scan
       _scanSubscription = FlutterBluePlus.onScanResults.listen(
@@ -427,12 +427,12 @@ class BleService {
         },
       );
 
-      // Start initial scan
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 1));
+      // Start initial 5-second scan
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
       
-      // Restart scan every 1.1 seconds (scan duration + small overlap for processing)
-      // This mimics Python's continuous scanning pattern
-      _continuousScanTimer = Timer.periodic(const Duration(milliseconds: 1100), (timer) async {
+      // Restart scan every 5.5 seconds (5s scan + 500ms gap for processing)
+      // Longer cycles reduce Bluetooth stack conflicts
+      _continuousScanTimer = Timer.periodic(const Duration(milliseconds: 5500), (timer) async {
         if (!_isContinuousScanRunning) {
           timer.cancel();
           return;
@@ -440,8 +440,8 @@ class BleService {
 
         try {
           await FlutterBluePlus.stopScan();
-          await Future.delayed(const Duration(milliseconds: 50)); // Brief pause before restart
-          await FlutterBluePlus.startScan(timeout: const Duration(seconds: 1));
+          await Future.delayed(const Duration(milliseconds: 500)); // Longer pause before restart
+          await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
           print('[BleService] Restarted continuous scan cycle');
         } catch (e) {
           print('[BleService] Error restarting scan: $e');

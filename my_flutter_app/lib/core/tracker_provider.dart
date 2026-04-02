@@ -19,7 +19,7 @@ class TrackerProvider with ChangeNotifier {
   Timer? _offlineCheckTimer;  // Timer to check for offline trackers
 
   static const String _trackersStorageKey = 'registered_trackers';
-  static const int _offlineThresholdSeconds = 8;  // Mark as offline if not seen for 8 seconds
+  static const int _offlineThresholdSeconds = 20;  // Mark as offline if not seen for 20 seconds
 
   List<Tracker> get trackers => _trackers;
   List<Alert> get alerts => _alerts;
