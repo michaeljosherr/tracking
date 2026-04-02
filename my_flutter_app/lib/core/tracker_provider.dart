@@ -4,7 +4,7 @@ import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:uuid/uuid.dart';
 
 class TrackerProvider with ChangeNotifier {
-  final List<Tracker> _trackers = List.from(mockTrackers);
+  final List<Tracker> _trackers = [];
   final List<Alert> _alerts = List.from(mockAlerts);
   final List<PendingTracker> _pendingTrackers = [];
   final _uuid = const Uuid();
@@ -16,6 +16,11 @@ class TrackerProvider with ChangeNotifier {
   List<Alert> get alerts => _alerts;
   List<PendingTracker> get pendingTrackers => _pendingTrackers;
   bool get isScanning => _isScanning;
+
+  // Configuration getters
+  double get txPower => _ble.txPower;
+  double get pathLoss => _ble.pathLoss;
+  int get rssiThreshold => _ble.rssiThreshold;
 
   List<Alert> get activeAlerts =>
       _alerts.where((a) => !a.acknowledged).toList();
@@ -33,6 +38,30 @@ class TrackerProvider with ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  // ============================================================================
+  // Configuration Methods
+  // ============================================================================
+
+  /// Update scanner configuration parameters
+  void setScannerConfig({
+    double? txPower,
+    double? pathLoss,
+    int? rssiThreshold,
+  }) {
+    _ble.setConfig(
+      txPower: txPower,
+      pathLoss: pathLoss,
+      rssiThreshold: rssiThreshold,
+    );
+    notifyListeners();
+  }
+
+  /// Reset scanner configuration to defaults
+  void resetScannerConfig() {
+    _ble.resetConfig();
+    notifyListeners();
   }
 
   /// Scan for ESP32 Tracker devices via BLE
@@ -89,10 +118,11 @@ class TrackerProvider with ChangeNotifier {
     // Generate a unique ID
     final newId = _uuid.v4();
 
-    // Calculate distance from RSSI
-    final distance = pendingTracker.rssi != null
-        ? BleService.calculateDistance(pendingTracker.rssi!)
-        : null;
+    // Use filtered RSSI if available, otherwise calculate from raw RSSI
+    final rssiValue = pendingTracker.rssi;
+    final rssiFilteredValue = pendingTracker.rssiFiltered ?? rssiValue?.toDouble();
+    final distance = pendingTracker.distance ??
+        (rssiValue != null ? BleService.calculateDistance(rssiValue) : null);
 
     final newTracker = Tracker(
       id: newId,
@@ -100,11 +130,11 @@ class TrackerProvider with ChangeNotifier {
       name: name,
       status: TrackerStatus.connected,
       signalStrength: pendingTracker.signalStrength,
-      lastSeen: DateTime.now(),
+      lastSeen: pendingTracker.discovered,
       batteryLevel: 100, // Default for new registration
       // BLE fields
-      rssi: pendingTracker.rssi,
-      rssiFiltered: pendingTracker.rssi?.toDouble(),
+      rssi: rssiValue,
+      rssiFiltered: rssiFilteredValue,
       distance: distance,
       serialNumber: pendingTracker.serialNumber,
       bleAddress: pendingTracker.bleAddress,
@@ -115,6 +145,8 @@ class TrackerProvider with ChangeNotifier {
 
     // Add to registered
     _trackers.add(newTracker);
+    print('[TrackerProvider] ✓ Registered device: "$name" (${pendingTracker.serialNumber})');
+    print('[TrackerProvider] Total trackers: ${_trackers.length}');
     notifyListeners();
   }
 

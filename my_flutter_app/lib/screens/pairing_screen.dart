@@ -247,9 +247,27 @@ class _PairingDialogState extends State<_PairingDialog> {
   }
 
   void _finishRegistration() {
-    context.read<TrackerProvider>().registerDevice(widget.tracker, _nameController.text);
-    context.pop(); // close dialog
-    context.pop(); // go back to dashboard
+    final deviceName = _nameController.text;
+    
+    // Register the device in the provider
+    context.read<TrackerProvider>().registerDevice(widget.tracker, deviceName);
+    
+    // Show success message
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✓ $deviceName registered successfully'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+    
+    // Close the dialog
+    context.pop();
+    
+    // Return to dashboard (pop the pairing screen)
+    context.pop();
   }
 
   @override

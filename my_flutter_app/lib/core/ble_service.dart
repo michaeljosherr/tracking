@@ -1,6 +1,86 @@
 import 'dart:math' as math;
-// import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:my_flutter_app/core/kalman_filter.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
+
+// ============================================================================
+// Configuration Constants
+// ============================================================================
+
+/// TX Power at 1 meter in dBm (device transmit power)
+const double TX_POWER_DBM = -65;
+
+/// Path loss exponent (free space = 2.0, indoor = 2.5-3.5)
+const double FREE_SPACE_PATH_LOSS = 2.0;
+
+/// RSSI threshold for filtering weak signals
+const int RSSI_THRESHOLD = -100;
+
+/// Scan duration in seconds
+const double SCAN_DURATION = 5.0;
+
+/// Display/UI update interval in seconds
+const double DISPLAY_INTERVAL = 1.0;
+
+/// Minimum and maximum distance bounds in meters
+const double MIN_DISTANCE_M = 0.1;
+const double MAX_DISTANCE_M = 9999;
+
+/// Kalman Filter Parameters
+const double KALMAN_PROCESS_NOISE = 0.01;
+const double KALMAN_MEASUREMENT_NOISE = 2.5;
+const double KALMAN_INITIAL_UNCERTAINTY = 10.0;
+
+// ============================================================================
+// Tracker Data Structure
+// ============================================================================
+
+/// Stores detected tracker information with Kalman filtering
+class TrackerData {
+  final String deviceId;
+  final String serialNumber;
+  final String bleAddress;
+  late int rssi;
+  late double rssiFiltered;
+  late double distance;
+  late DateTime lastUpdated;
+  final KalmanFilter kalmanFilter;
+  final List<double> rssiHistory = [];
+
+  TrackerData({
+    required this.deviceId,
+    required this.serialNumber,
+    required this.bleAddress,
+    required int initialRssi,
+    required double initialDistance,
+  })  : rssi = initialRssi,
+        rssiFiltered = initialRssi.toDouble(),
+        distance = initialDistance,
+        lastUpdated = DateTime.now(),
+        kalmanFilter = KalmanFilter(
+          processNoise: KALMAN_PROCESS_NOISE,
+          measurementNoise: KALMAN_MEASUREMENT_NOISE,
+          initialUncertainty: KALMAN_INITIAL_UNCERTAINTY,
+        );
+
+  /// Update tracker with new RSSI measurement
+  void updateRssi(int newRssi) {
+    rssi = newRssi;
+    rssiFiltered = kalmanFilter.update(newRssi.toDouble());
+    lastUpdated = DateTime.now();
+
+    // Keep history for graphing (max 100 points)
+    if (rssiHistory.length > 100) {
+      rssiHistory.removeAt(0);
+    }
+    rssiHistory.add(rssiFiltered);
+  }
+
+  /// Update distance based on filtered RSSI
+  void updateDistance(double newDistance) {
+    distance = newDistance;
+  }
+}
 
 /// BLE Service - Manages Bluetooth Low Energy device scanning
 /// Note: flutter_blue_plus package not yet installed in pubspec.yaml
@@ -8,11 +88,54 @@ import 'package:my_flutter_app/models/mock_data.dart';
 class BleService {
   static final BleService _instance = BleService._internal();
 
+  // Configuration parameters
+  double _txPower = TX_POWER_DBM;
+  double _pathLoss = FREE_SPACE_PATH_LOSS;
+  int _rssiThreshold = RSSI_THRESHOLD;
+
+  // Active tracker data during scanning
+  final Map<String, TrackerData> _activeTrackers = {};
+
   factory BleService() {
     return _instance;
   }
 
   BleService._internal();
+
+  // ============================================================================
+  // Configuration Methods
+  // ============================================================================
+
+  /// Get current TX power setting
+  double get txPower => _txPower;
+
+  /// Get current path loss exponent setting
+  double get pathLoss => _pathLoss;
+
+  /// Get current RSSI threshold setting
+  int get rssiThreshold => _rssiThreshold;
+
+  /// Update scanner configuration
+  void setConfig({
+    double? txPower,
+    double? pathLoss,
+    int? rssiThreshold,
+  }) {
+    if (txPower != null) _txPower = txPower;
+    if (pathLoss != null) _pathLoss = pathLoss;
+    if (rssiThreshold != null) _rssiThreshold = rssiThreshold;
+  }
+
+  /// Reset configuration to defaults
+  void resetConfig() {
+    _txPower = TX_POWER_DBM;
+    _pathLoss = FREE_SPACE_PATH_LOSS;
+    _rssiThreshold = RSSI_THRESHOLD;
+  }
+
+  // ============================================================================
+  // Device Parsing & Distance Calculation
+  // ============================================================================
 
   /// Parse device name to extract ESP32 tracker info
   /// Expected format: esp32_indiv_[SERIAL_NUMBER]
@@ -35,10 +158,10 @@ class BleService {
   /// Calculate distance from RSSI using Free Space Path Loss model
   /// Formula: distance (m) = 10^((TX_POWER - RSSI) / (10 * PATH_LOSS))
   static double calculateDistance(int rssi, {
-    double txPower = -65,
-    double pathLoss = 2.0,
-    double minDistance = 0.1,
-    double maxDistance = 9999,
+    double txPower = TX_POWER_DBM,
+    double pathLoss = FREE_SPACE_PATH_LOSS,
+    double minDistance = MIN_DISTANCE_M,
+    double maxDistance = MAX_DISTANCE_M,
   }) {
     if (rssi == 0) return 0.0;
 
@@ -46,70 +169,183 @@ class BleService {
     return distance.clamp(minDistance, maxDistance);
   }
 
-  /// Scan for ESP32 tracker devices (Mock Implementation)
+  /// Calculate distance using current instance configuration
+  double calculateDistanceWithConfig(int rssi) {
+    return calculateDistance(
+      rssi,
+      txPower: _txPower,
+      pathLoss: _pathLoss,
+    );
+  }
+
+  /// Scan for ESP32 tracker devices via BLE
+  /// Uses flutter_blue_plus to perform actual BLE scanning
+  /// Applies Kalman filtering and RSSI threshold filtering
   /// Returns a list of discovered PendingTracker objects
-  /// Note: Uses mock data - real BLE scanning requires flutter_blue_plus package
   Future<List<PendingTracker>> scanForTrackers({
     Duration scanDuration = const Duration(seconds: 5),
   }) async {
     try {
-      // Simulate scanning delay
-      await Future.delayed(scanDuration);
+      // Clear previous tracking data
+      _activeTrackers.clear();
+
+      // Check Bluetooth availability
+      if (!await isBluetoothAvailable()) {
+        print('[BleService] Bluetooth not available');
+        return [];
+      }
+
+      // Check Bluetooth is enabled
+      if (!await isBluetoothOn()) {
+        print('[BleService] Bluetooth is off');
+        return [];
+      }
+
+      print('[BleService] Starting BLE scan for ${scanDuration.inSeconds}s...');
       
-      // Return mock pending trackers from mock data
-      final mockPending = <PendingTracker>[
-        PendingTracker(
-          deviceId: "esp32_indiv_03F2",
-          signalStrength: 85,
-          discovered: DateTime.now(),
-          serialNumber: "03F2",
-          bleAddress: "A1:B2:C3:D4:E5:F6",
-          rssi: -45,
-        ),
-        PendingTracker(
-          deviceId: "esp32_indiv_0A4B",
-          signalStrength: 72,
-          discovered: DateTime.now().subtract(const Duration(seconds: 2)),
-          serialNumber: "0A4B",
-          bleAddress: "A1:B2:C3:D4:E5:F7",
-          rssi: -58,
-        ),
-        PendingTracker(
-          deviceId: "esp32_indiv_1C7E",
-          signalStrength: 60,
-          discovered: DateTime.now().subtract(const Duration(seconds: 4)),
-          serialNumber: "1C7E",
-          bleAddress: "A1:B2:C3:D4:E5:F8",
-          rssi: -70,
-        ),
-      ];
-      
-      return mockPending;
+      final result = <PendingTracker>[];
+
+      // Start listening to scan results BEFORE starting the scan
+      final scanSubscription = FlutterBluePlus.onScanResults.listen(
+        (scanResults) {
+          print('[BleService] Got ${scanResults.length} scan results');
+
+          for (final scanResult in scanResults) {
+            final device = scanResult.device;
+
+            // Get device name (prefer advName if available)
+            final name = device.advName.isNotEmpty ? device.advName : device.name;
+            final rssi = scanResult.rssi;
+            final address = device.remoteId.toString();
+
+            // Debug: Log all found devices
+            if (name.isNotEmpty) {
+              print('[BleService] Device: "$name", RSSI: $rssi, Address: $address');
+            }
+
+            // Parse device name for ESP32 trackers
+            final parsed = parseDeviceName(name);
+            if (parsed == null) {
+              continue;
+            }
+
+            final (deviceId: deviceId, serialNumber: serialNumber) = parsed;
+
+            print('[BleService] ✓ Matched ESP32: $serialNumber, RSSI: $rssi dBm');
+
+            // Filter by RSSI threshold
+            if (rssi < _rssiThreshold) {
+              print('[BleService] RSSI $rssi below threshold $_rssiThreshold, skipping');
+              continue;
+            }
+
+            // Store or update tracker data with Kalman filtering
+            final trackerData = _activeTrackers.putIfAbsent(
+              serialNumber,
+              () => TrackerData(
+                deviceId: deviceId,
+                serialNumber: serialNumber,
+                bleAddress: address,
+                initialRssi: rssi,
+                initialDistance: calculateDistanceWithConfig(rssi),
+              ),
+            );
+
+            // Update with new measurement (applies Kalman filtering)
+            trackerData.updateRssi(rssi);
+            trackerData.updateDistance(
+              calculateDistanceWithConfig(rssi),
+            );
+
+            // Calculate signal strength percentage from filtered RSSI
+            final signalStrength =
+                (100 + trackerData.rssiFiltered).clamp(0.0, 100.0).toInt();
+            final distance = trackerData.distance;
+
+            // Only add unique devices (latest data)
+            result.removeWhere((p) => p.serialNumber == serialNumber);
+            result.add(
+              PendingTracker(
+                deviceId: deviceId,
+                signalStrength: signalStrength,
+                discovered: DateTime.now(),
+                serialNumber: serialNumber,
+                bleAddress: address,
+                rssi: rssi,
+                rssiFiltered: trackerData.rssiFiltered,
+                distance: distance,
+                rssiHistory: List.from(trackerData.rssiHistory),
+              ),
+            );
+
+            print('[BleService] Added/updated: $serialNumber (Signal: $signalStrength%, Distance: ${distance.toStringAsFixed(2)}m)');
+          }
+        },
+        onError: (e) {
+          print('[BleService] Scan stream error: $e');
+        },
+      );
+
+      // Start scanning (uses timeout to control duration)
+      await FlutterBluePlus.startScan(
+        timeout: scanDuration,
+        continuousUpdates: true,
+      );
+
+      // Wait for the scan to complete (startScan with timeout handles this)
+      // but we keep the listener alive during scanning
+      await Future.delayed(scanDuration + const Duration(milliseconds: 100));
+
+      // Cancel subscription
+      await scanSubscription.cancel();
+
+      print('[BleService] Scan complete. Found ${_activeTrackers.length} ESP32 trackers.');
+      return result;
     } catch (e) {
       print('[BleService] Error scanning: $e');
       return [];
     }
   }
 
-  /// Stop scanning (Mock Implementation)
+  /// Stop BLE scanning
   Future<void> stopScan() async {
-    // No-op for mock implementation
+    try {
+      await FlutterBluePlus.stopScan();
+      print('[BleService] Scan stopped');
+    } catch (e) {
+      print('[BleService] Error stopping scan: $e');
+    }
   }
 
-  /// Check if Bluetooth is available (Mock Implementation)
-  /// Always returns true for development
+  /// Check if Bluetooth is available on the device
   Future<bool> isBluetoothAvailable() async {
-    return true;
+    try {
+      final isAvailable = await FlutterBluePlus.isAvailable;
+      return isAvailable;
+    } catch (e) {
+      print('[BleService] Error checking Bluetooth availability: $e');
+      return false;
+    }
   }
 
-  /// Check if Bluetooth is on (Mock Implementation)
-  /// Always returns true for development
+  /// Check if Bluetooth is currently enabled
   Future<bool> isBluetoothOn() async {
-    return true;
+    try {
+      final isOn = await FlutterBluePlus.isOn;
+      return isOn;
+    } catch (e) {
+      print('[BleService] Error checking Bluetooth state: $e');
+      return false;
+    }
   }
 
-  /// Turn on Bluetooth (Mock Implementation - No-op)
+  /// Request to turn on Bluetooth (may prompt user on Android)
   Future<void> turnOnBluetooth() async {
-    // No-op for mock implementation
+    try {
+      await FlutterBluePlus.turnOn();
+      print('[BleService] Bluetooth enabled');
+    } catch (e) {
+      print('[BleService] Error turning on Bluetooth: $e');
+    }
   }
 }

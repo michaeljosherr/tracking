@@ -109,6 +109,9 @@ class PendingTracker {
   final String? serialNumber; // From device name parsing
   final String? bleAddress; // MAC address
   final int? rssi; // Raw RSSI in dBm
+  final double? rssiFiltered; // Kalman-filtered RSSI
+  final double? distance; // Estimated distance in meters
+  final List<double>? rssiHistory; // Historical filtered RSSI values
 
   PendingTracker({
     required this.deviceId,
@@ -117,6 +120,9 @@ class PendingTracker {
     this.serialNumber,
     this.bleAddress,
     this.rssi,
+    this.rssiFiltered,
+    this.distance,
+    this.rssiHistory,
   });
 }
 
