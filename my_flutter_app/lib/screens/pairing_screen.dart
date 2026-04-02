@@ -246,11 +246,11 @@ class _PairingDialogState extends State<_PairingDialog> {
     super.dispose();
   }
 
-  void _finishRegistration() {
+  void _finishRegistration() async {
     final deviceName = _nameController.text;
     
     // Register the device in the provider
-    context.read<TrackerProvider>().registerDevice(widget.tracker, deviceName);
+    await context.read<TrackerProvider>().registerDevice(widget.tracker, deviceName);
     
     // Show success message
     if (mounted) {

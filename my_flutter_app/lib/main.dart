@@ -11,15 +11,34 @@ void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => TrackerProvider()),
+        ChangeNotifierProvider(
+          create: (_) {
+            final provider = TrackerProvider();
+            // Call initialize asynchronously
+            provider.initialize().then((_) {
+              print('[MyApp] TrackerProvider initialized');
+            });
+            return provider;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AppPreferencesProvider()),
       ],

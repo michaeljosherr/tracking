@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:my_flutter_app/core/ble_service.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:uuid/uuid.dart';
@@ -16,6 +18,8 @@ class TrackerProvider with ChangeNotifier {
   bool _isScanInProgress = false;  // Prevent concurrent scans
   Timer? _backgroundScanTimer;
   final Set<String> _pingingDevices = {};  // Track devices currently being pinged
+
+  static const String _trackersStorageKey = 'registered_trackers';
 
   List<Tracker> get trackers => _trackers;
   List<Alert> get alerts => _alerts;
@@ -37,6 +41,52 @@ class TrackerProvider with ChangeNotifier {
       _trackers.where((t) => t.status == TrackerStatus.outOfRange).length;
   int get disconnectedCount =>
       _trackers.where((t) => t.status == TrackerStatus.disconnected).length;
+
+  /// Initialize tracker provider and load saved trackers
+  Future<void> initialize() async {
+    await _loadTrackers();
+    print('[TrackerProvider] Initialized with ${_trackers.length} saved tracker(s)');
+  }
+
+  /// Load trackers from SharedPreferences
+  Future<void> _loadTrackers() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final trackersJson = prefs.getStringList(_trackersStorageKey) ?? [];
+      
+      _trackers.clear();
+      for (final json in trackersJson) {
+        try {
+          final tracker = Tracker.fromJson(jsonDecode(json) as Map<String, dynamic>);
+          _trackers.add(tracker);
+          print('[TrackerProvider] Loaded tracker: ${tracker.name} (${tracker.serialNumber})');
+        } catch (e) {
+          print('[TrackerProvider] Error loading tracker: $e');
+        }
+      }
+      
+      if (_trackers.isNotEmpty) {
+        notifyListeners();
+      }
+    } catch (e) {
+      print('[TrackerProvider] Error loading trackers: $e');
+    }
+  }
+
+  /// Save trackers to SharedPreferences
+  Future<void> _saveTrackers() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final trackersJson = _trackers
+          .map((tracker) => jsonEncode(tracker.toJson()))
+          .toList();
+      
+      await prefs.setStringList(_trackersStorageKey, trackersJson);
+      print('[TrackerProvider] Saved ${_trackers.length} tracker(s) to storage');
+    } catch (e) {
+      print('[TrackerProvider] Error saving trackers: $e');
+    }
+  }
 
   Tracker? getTracker(String id) {
     try {
@@ -275,11 +325,12 @@ class TrackerProvider with ChangeNotifier {
       }
 
       notifyListeners();
+      _saveTrackers();  // Persist rename
     }
   }
 
   /// Register a discovered BLE device as an active tracker
-  void registerDevice(PendingTracker pendingTracker, String name) {
+  Future<void> registerDevice(PendingTracker pendingTracker, String name) async {
     // Generate a unique ID
     final newId = _uuid.v4();
 
@@ -313,11 +364,17 @@ class TrackerProvider with ChangeNotifier {
     print('[TrackerProvider] ✓ Registered device: "$name" (${pendingTracker.serialNumber})');
     print('[TrackerProvider] Total trackers: ${_trackers.length}');
     notifyListeners();
+    
+    // Persist to storage
+    await _saveTrackers();
   }
 
-  void unregisterTracker(String id) {
+  Future<void> unregisterTracker(String id) async {
     _trackers.removeWhere((t) => t.id == id);
     notifyListeners();
+    
+    // Persist to storage
+    await _saveTrackers();
   }
 
   void acknowledgeAlert(String alertId) {

@@ -92,11 +92,13 @@ class TrackerDetailScreen extends StatelessWidget {
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 HapticFeedback.mediumImpact();
-                context.read<TrackerProvider>().unregisterTracker(trackerId);
-                context.pop();
-                context.pop(); // Back to dashboard
+                await context.read<TrackerProvider>().unregisterTracker(trackerId);
+                if (context.mounted) {
+                  context.pop();
+                  context.pop(); // Back to dashboard
+                }
               },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('Unregister'),

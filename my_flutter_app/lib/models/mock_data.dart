@@ -60,6 +60,45 @@ class Tracker {
       bleAddress: bleAddress ?? this.bleAddress,
     );
   }
+
+  /// Convert Tracker to JSON for persistent storage
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'deviceId': deviceId,
+      'name': name,
+      'status': status.toString().split('.').last,
+      'signalStrength': signalStrength,
+      'lastSeen': lastSeen.toIso8601String(),
+      'batteryLevel': batteryLevel,
+      'rssi': rssi,
+      'rssiFiltered': rssiFiltered,
+      'distance': distance,
+      'serialNumber': serialNumber,
+      'bleAddress': bleAddress,
+    };
+  }
+
+  /// Create Tracker from JSON
+  factory Tracker.fromJson(Map<String, dynamic> json) {
+    return Tracker(
+      id: json['id'] as String,
+      deviceId: json['deviceId'] as String,
+      name: json['name'] as String,
+      status: TrackerStatus.values.firstWhere(
+        (e) => e.toString().split('.').last == json['status'],
+        orElse: () => TrackerStatus.disconnected,
+      ),
+      signalStrength: json['signalStrength'] as int? ?? 0,
+      lastSeen: DateTime.parse(json['lastSeen'] as String),
+      batteryLevel: json['batteryLevel'] as int?,
+      rssi: json['rssi'] as int?,
+      rssiFiltered: json['rssiFiltered'] as double?,
+      distance: json['distance'] as double?,
+      serialNumber: json['serialNumber'] as String?,
+      bleAddress: json['bleAddress'] as String?,
+    );
+  }
 }
 
 class Alert {
