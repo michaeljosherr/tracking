@@ -12,13 +12,16 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: const Text('Settings'),
         centerTitle: false,
-        backgroundColor: const Color(0xFFF1F5F9),
-        surfaceTintColor: const Color(0xFFF1F5F9),
+        backgroundColor: isDark ? colorScheme.surface : const Color(0xFFF1F5F9),
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           onPressed: () => context.pop(),
@@ -34,11 +37,12 @@ class SettingsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSectionTitle('Appearance'),
+                  _buildSectionTitle(context, 'Appearance'),
                   _buildThemeCard(context),
                   const SizedBox(height: 24),
-                  _buildSectionTitle('Guidance'),
+                  _buildSectionTitle(context, 'Guidance'),
                   _buildActionCard(
+                    context: context,
                     icon: Icons.play_circle_outline_rounded,
                     iconColor: const Color(0xFF2563EB),
                     backgroundColor: const Color(0xFFEFF6FF),
@@ -54,6 +58,7 @@ class SettingsScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   _buildActionCard(
+                    context: context,
                     icon: LucideIcons.shieldCheck,
                     iconColor: const Color(0xFF0F766E),
                     backgroundColor: const Color(0xFFECFDF5),
@@ -130,6 +135,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Widget _buildActionCard({
+    required BuildContext context,
     required IconData icon,
     required Color iconColor,
     required Color backgroundColor,
@@ -137,6 +143,10 @@ class SettingsScreen extends StatelessWidget {
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(
@@ -147,25 +157,24 @@ class SettingsScreen extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: backgroundColor,
+            color: isDark ? iconColor.withValues(alpha: 0.16) : backgroundColor,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(icon, color: iconColor, size: 20),
         ),
         title: Text(
           title,
-          style: const TextStyle(
+          style: textTheme.labelLarge?.copyWith(
             fontWeight: FontWeight.w700,
-            color: Color(0xFF0F172A),
           ),
         ),
         subtitle: Text(
           subtitle,
-          style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+          style: textTheme.bodySmall?.copyWith(fontSize: 13),
         ),
-        trailing: const Icon(
+        trailing: Icon(
           LucideIcons.chevronRight,
-          color: Color(0xFF94A3B8),
+          color: theme.iconTheme.color?.withValues(alpha: 0.72),
           size: 18,
         ),
         onTap: onTap,
@@ -173,15 +182,17 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
+  Widget _buildSectionTitle(BuildContext context, String title) {
+    final theme = Theme.of(context);
+
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 10),
       child: Text(
         title.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           fontWeight: FontWeight.w700,
           fontSize: 12,
-          color: Color(0xFF94A3B8),
+          color: theme.textTheme.bodySmall?.color,
           letterSpacing: 0.6,
         ),
       ),
@@ -196,7 +207,10 @@ class SettingsScreen extends StatelessWidget {
     bool isSelected,
     VoidCallback onTap,
   ) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return ListTile(
       onTap: onTap,
@@ -204,27 +218,28 @@ class SettingsScreen extends StatelessWidget {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFDBEAFE) : Colors.transparent,
+          color: isSelected
+              ? colorScheme.primary.withValues(alpha: isDark ? 0.2 : 0.14)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(
           icon,
           color: isSelected
-              ? const Color(0xFF2563EB)
-              : Color(isDark ? 0xFFA1AEC6 : 0xFF64748B),
+              ? colorScheme.primary
+              : theme.iconTheme.color?.withValues(alpha: 0.8),
           size: 20,
         ),
       ),
       title: Text(
         title,
-        style: TextStyle(
+        style: textTheme.labelLarge?.copyWith(
           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-          color: isDark ? Colors.white : const Color(0xFF0F172A),
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+        style: textTheme.bodySmall?.copyWith(fontSize: 13),
       ),
       trailing: Container(
         width: 24,
@@ -233,17 +248,17 @@ class SettingsScreen extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(
             color: isSelected
-                ? const Color(0xFF2563EB)
-                : Color(isDark ? 0xFF475569 : 0xFFCBD5E1),
+                ? colorScheme.primary
+                : theme.colorScheme.outline,
             width: 2,
           ),
         ),
         child: isSelected
-            ? const Center(
+            ? Center(
                 child: Icon(
                   LucideIcons.check,
                   size: 14,
-                  color: Color(0xFF2563EB),
+                  color: colorScheme.primary,
                 ),
               )
             : null,

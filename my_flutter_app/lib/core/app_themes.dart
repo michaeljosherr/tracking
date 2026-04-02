@@ -22,12 +22,12 @@ class AppThemes {
         primary: _lightPrimaryColor,
         secondary: const Color(0xFF3B82F6), // Blue 500
         surface: _lightSurfaceColor,
-        background: _lightBackgroundColor,
         error: Colors.red.shade600,
         outline: const Color(0xFFCBD5E1), // Slate 300
         outlineVariant: const Color(0xFFE2E8F0), // Slate 200
       ),
       scaffoldBackgroundColor: _lightSurfaceColor,
+      canvasColor: _lightBackgroundColor,
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -47,6 +47,31 @@ class AppThemes {
           borderRadius: BorderRadius.circular(12),
           side: const BorderSide(color: Color(0xFFE2E8F0)),
         ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: GoogleFonts.inter(
+          fontSize: 14,
+          color: const Color(0xFF0F172A),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: const Color(0xFF0F172A),
+        contentTextStyle: GoogleFonts.inter(color: Colors.white),
+        actionTextColor: _lightPrimaryColor,
+        behavior: SnackBarBehavior.floating,
+      ),
+      dividerTheme: const DividerThemeData(
+        color: Color(0xFFE2E8F0),
+        thickness: 1,
+        space: 1,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -198,12 +223,12 @@ class AppThemes {
         primary: _darkPrimaryColor,
         secondary: const Color(0xFF60A5FA), // Blue 400
         surface: _darkSurfaceColor,
-        background: _darkBackgroundColor,
         error: Colors.red.shade400,
         outline: const Color(0xFF475569), // Slate 600
         outlineVariant: const Color(0xFF334155), // Slate 700
       ),
       scaffoldBackgroundColor: _darkBackgroundColor,
+      canvasColor: _darkSurfaceColor,
       appBarTheme: AppBarTheme(
         backgroundColor: _darkSurfaceColor,
         elevation: 0,
@@ -223,6 +248,31 @@ class AppThemes {
           borderRadius: BorderRadius.circular(12),
           side: const BorderSide(color: Color(0xFF334155)),
         ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: _darkSurfaceColor,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: _darkSurfaceColor,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: GoogleFonts.inter(
+          fontSize: 14,
+          color: Colors.white,
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: const Color(0xFF1E293B),
+        contentTextStyle: GoogleFonts.inter(color: Colors.white),
+        actionTextColor: _darkPrimaryColor,
+        behavior: SnackBarBehavior.floating,
+      ),
+      dividerTheme: const DividerThemeData(
+        color: Color(0xFF334155),
+        thickness: 1,
+        space: 1,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,

@@ -79,13 +79,21 @@ class _TrackerCardSwipeableState extends State<TrackerCardSwipeable>
   }
 
   Color _getStatusBgColor() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     switch (widget.tracker.status) {
       case TrackerStatus.connected:
-        return Colors.green.shade50;
+        return isDark
+            ? Colors.green.shade600.withValues(alpha: 0.16)
+            : Colors.green.shade50;
       case TrackerStatus.outOfRange:
-        return Colors.orange.shade50;
+        return isDark
+            ? Colors.orange.shade600.withValues(alpha: 0.16)
+            : Colors.orange.shade50;
       case TrackerStatus.disconnected:
-        return Colors.red.shade50;
+        return isDark
+            ? Colors.red.shade600.withValues(alpha: 0.16)
+            : Colors.red.shade50;
     }
   }
 
@@ -123,7 +131,7 @@ class _TrackerCardSwipeableState extends State<TrackerCardSwipeable>
                 width: (-_dragOffset).clamp(0, _actionWidth * 2).toDouble(),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
+                    color: Colors.red.withValues(alpha: 0.1),
                     borderRadius: const BorderRadius.only(
                       topRight: Radius.circular(16),
                       bottomRight: Radius.circular(16),
@@ -169,8 +177,8 @@ class _TrackerCardSwipeableState extends State<TrackerCardSwipeable>
                   HapticFeedback.lightImpact();
                   context.push('/tracker/${widget.tracker.id}');
                 },
-                splashColor: const Color(0xFF2563EB).withOpacity(0.1),
-                highlightColor: const Color(0xFF2563EB).withOpacity(0.05),
+                splashColor: const Color(0xFF2563EB).withValues(alpha: 0.1),
+                highlightColor: const Color(0xFF2563EB).withValues(alpha: 0.05),
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
                   child: Column(

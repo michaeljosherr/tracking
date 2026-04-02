@@ -111,6 +111,8 @@ class TrackerDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
     final tracker = context.watch<TrackerProvider>().getTracker(trackerId);
 
     if (tracker == null) {
@@ -121,13 +123,8 @@ class TrackerDetailScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text('Tracker Details',
-            style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600)),
-        iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
+        title: const Text('Tracker Details'),
         actions: [
           IconButton(
             icon: const Icon(Icons.edit, size: 20),
@@ -160,12 +157,16 @@ class TrackerDetailScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Icon(LucideIcons.chevronRight, size: 16, color: Color(0xFF94A3B8)),
+                Icon(
+                  LucideIcons.chevronRight,
+                  size: 16,
+                  color: theme.iconTheme.color?.withValues(alpha: 0.7),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     tracker.name,
-                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                    style: textTheme.bodySmall?.copyWith(fontSize: 13),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -173,12 +174,12 @@ class TrackerDetailScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 20),
-            _buildHeaderCard(tracker),
+            _buildHeaderCard(context, tracker),
             const SizedBox(height: 24),
-            _buildStatsGrid(tracker),
+            _buildStatsGrid(context, tracker),
             const SizedBox(height: 32),
             if (tracker.rssi != null || tracker.bleAddress != null) ...[
-              _buildBleDetailsCard(tracker),
+              _buildBleDetailsCard(context, tracker),
               const SizedBox(height: 32),
             ],
             SizedBox(
@@ -204,7 +205,9 @@ class TrackerDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeaderCard(Tracker tracker) {
+  Widget _buildHeaderCard(BuildContext context, Tracker tracker) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     Color statusColor;
     String statusText;
     switch (tracker.status) {
@@ -226,11 +229,11 @@ class TrackerDetailScreen extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.05),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -240,18 +243,32 @@ class TrackerDetailScreen extends StatelessWidget {
         children: [
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: const Color(0xFFEFF6FF), shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2563EB).withValues(
+                alpha: isDark ? 0.16 : 0.08,
+              ),
+              shape: BoxShape.circle,
+            ),
             child: const Icon(LucideIcons.radio, size: 48, color: Color(0xFF2563EB)),
           ),
           const SizedBox(height: 16),
-          Text(tracker.name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+          Text(
+            tracker.name,
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 8),
-          Text('ID: ${tracker.deviceId}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 14)),
+          Text(
+            'ID: ${tracker.deviceId}',
+            style: theme.textTheme.bodyMedium?.copyWith(fontSize: 14),
+          ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.1),
+              color: statusColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -272,7 +289,7 @@ class TrackerDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatsGrid(Tracker tracker) {
+  Widget _buildStatsGrid(BuildContext context, Tracker tracker) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isSmallScreen = constraints.maxWidth < 500;
@@ -284,23 +301,50 @@ class TrackerDetailScreen extends StatelessWidget {
           mainAxisSpacing: 12,
           childAspectRatio: isSmallScreen ? 1.5 : 1.2,
           children: [
-            _buildDetailCard('Signal Strength', '${tracker.signalStrength}%', Icons.bar_chart),
-            _buildDetailCard('Battery Level', tracker.batteryLevel == null ? '--' : '${tracker.batteryLevel}%', LucideIcons.battery),
-            _buildDetailCard('Last Seen', timeago.format(tracker.lastSeen), LucideIcons.clock),
-            _buildDetailCard('Location', 'Hub Vicinity', LucideIcons.mapPin),
+            _buildDetailCard(
+              context,
+              'Signal Strength',
+              '${tracker.signalStrength}%',
+              Icons.bar_chart,
+            ),
+            _buildDetailCard(
+              context,
+              'Battery Level',
+              tracker.batteryLevel == null ? '--' : '${tracker.batteryLevel}%',
+              LucideIcons.battery,
+            ),
+            _buildDetailCard(
+              context,
+              'Last Seen',
+              timeago.format(tracker.lastSeen),
+              LucideIcons.clock,
+            ),
+            _buildDetailCard(
+              context,
+              'Location',
+              'Hub Vicinity',
+              LucideIcons.mapPin,
+            ),
           ],
         );
       },
     );
   }
 
-  Widget _buildDetailCard(String title, String value, IconData icon) {
+  Widget _buildDetailCard(
+    BuildContext context,
+    String title,
+    String value,
+    IconData icon,
+  ) {
+    final theme = Theme.of(context);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -308,28 +352,43 @@ class TrackerDetailScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: const Color(0xFF64748B)),
+              Icon(icon, size: 16, color: theme.textTheme.bodyMedium?.color),
               const SizedBox(width: 8),
-              Text(title, style: const TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w500)),
+              Text(
+                title,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+          Text(
+            value,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildBleDetailsCard(Tracker tracker) {
+  Widget _buildBleDetailsCard(BuildContext context, Tracker tracker) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.05),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -338,46 +397,74 @@ class TrackerDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(LucideIcons.bluetooth, size: 20, color: Color(0xFF2563EB)),
-              SizedBox(width: 8),
-              Text('BLE Information', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+              const Icon(LucideIcons.bluetooth, size: 20, color: Color(0xFF2563EB)),
+              const SizedBox(width: 8),
+              Text(
+                'BLE Information',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
-          Divider(color: const Color(0xFFE2E8F0), height: 1),
+          Divider(color: theme.colorScheme.outlineVariant, height: 1),
           const SizedBox(height: 16),
           if (tracker.serialNumber != null) ...[
-            _buildBleDetailRow('Serial Number', tracker.serialNumber!),
+            _buildBleDetailRow(context, 'Serial Number', tracker.serialNumber!),
             const SizedBox(height: 12),
           ],
           if (tracker.rssi != null) ...[
-            _buildBleDetailRow('RSSI', '${tracker.rssi} dBm'),
+            _buildBleDetailRow(context, 'RSSI', '${tracker.rssi} dBm'),
             const SizedBox(height: 12),
           ],
           if (tracker.rssiFiltered != null) ...[
-            _buildBleDetailRow('RSSI (Filtered)', '${tracker.rssiFiltered?.toStringAsFixed(1)} dBm'),
+            _buildBleDetailRow(
+              context,
+              'RSSI (Filtered)',
+              '${tracker.rssiFiltered?.toStringAsFixed(1)} dBm',
+            ),
             const SizedBox(height: 12),
           ],
           if (tracker.distance != null) ...[
-            _buildBleDetailRow('Distance', '${tracker.distance?.toStringAsFixed(2)} m'),
+            _buildBleDetailRow(
+              context,
+              'Distance',
+              '${tracker.distance?.toStringAsFixed(2)} m',
+            ),
             const SizedBox(height: 12),
           ],
           if (tracker.bleAddress != null) ...[
-            _buildBleDetailRow('MAC Address', tracker.bleAddress!),
+            _buildBleDetailRow(context, 'MAC Address', tracker.bleAddress!),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildBleDetailRow(String label, String value) {
+  Widget _buildBleDetailRow(BuildContext context, String label, String value) {
+    final theme = Theme.of(context);
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 14, fontWeight: FontWeight.w500)),
-        Text(value, style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.w600)),
+        Text(
+          label,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Text(
+          value,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ],
     );
   }

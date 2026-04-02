@@ -18,7 +18,6 @@ class AlertsScreen extends StatelessWidget {
     final unreadCount = alerts.where((alert) => !alert.acknowledged).length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -35,10 +34,10 @@ class AlertsScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildSummaryCard(alerts.length, unreadCount),
+                        _buildSummaryCard(context, alerts.length, unreadCount),
                         const SizedBox(height: 20),
                         if (alerts.isEmpty)
-                          _buildEmptyState()
+                          _buildEmptyState(context)
                         else
                           Column(
                             children: alerts
@@ -57,25 +56,31 @@ class AlertsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSummaryCard(int totalAlerts, int unreadCount) {
+  Widget _buildSummaryCard(BuildContext context, int totalAlerts, int unreadCount) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: const BoxDecoration(
-              color: Color(0xFFEFF6FF),
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(
+                alpha: theme.brightness == Brightness.dark ? 0.18 : 0.08,
+              ),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
+            child: Icon(
               LucideIcons.bellRing,
-              color: Color(0xFF2563EB),
+              color: colorScheme.primary,
               size: 22,
             ),
           ),
@@ -84,12 +89,11 @@ class AlertsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Alert Center',
-                  style: TextStyle(
+                  style: textTheme.headlineSmall?.copyWith(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -97,7 +101,7 @@ class AlertsScreen extends StatelessWidget {
                   totalAlerts == 0
                       ? 'Everything looks stable right now.'
                       : '$unreadCount unread of $totalAlerts total alerts.',
-                  style: const TextStyle(color: Color(0xFF64748B), height: 1.4),
+                  style: textTheme.bodyMedium?.copyWith(height: 1.4),
                 ),
               ],
             ),
@@ -107,19 +111,25 @@ class AlertsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
         child: Column(
-          children: const [
-            Icon(LucideIcons.bellOff, size: 56, color: Color(0xFFCBD5E1)),
+          children: [
+            Icon(
+              LucideIcons.bellOff,
+              size: 56,
+              color: theme.colorScheme.outline,
+            ),
             SizedBox(height: 16),
             Text(
               'No active alerts',
               style: TextStyle(
                 fontSize: 18,
-                color: Color(0xFF334155),
+                color: theme.textTheme.bodyLarge?.color,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -127,7 +137,10 @@ class AlertsScreen extends StatelessWidget {
             Text(
               'Trackers are operating normally. New alerts will appear here automatically.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF64748B), height: 1.4),
+              style: TextStyle(
+                color: theme.textTheme.bodyMedium?.color,
+                height: 1.4,
+              ),
             ),
           ],
         ),
@@ -136,37 +149,47 @@ class AlertsScreen extends StatelessWidget {
   }
 
   Widget _buildAlertCard(BuildContext context, Alert alert) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
     late final Color surfaceColor;
     late final Color accentColor;
     late final IconData icon;
 
     switch (alert.type) {
       case 'disconnected':
-        surfaceColor = const Color(0xFFFEF2F2);
         accentColor = const Color(0xFFDC2626);
+        surfaceColor = isDark
+            ? accentColor.withValues(alpha: 0.14)
+            : const Color(0xFFFEF2F2);
         icon = LucideIcons.wifiOff;
         break;
       case 'out-of-range':
-        surfaceColor = const Color(0xFFFFF7ED);
         accentColor = const Color(0xFFEA580C);
+        surfaceColor = isDark
+            ? accentColor.withValues(alpha: 0.14)
+            : const Color(0xFFFFF7ED);
         icon = LucideIcons.mapPinOff;
         break;
       case 'reconnected':
       default:
-        surfaceColor = const Color(0xFFF0FDF4);
         accentColor = const Color(0xFF16A34A);
+        surfaceColor = isDark
+            ? accentColor.withValues(alpha: 0.14)
+            : const Color(0xFFF0FDF4);
         icon = LucideIcons.badgeCheck;
         break;
     }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      color: alert.acknowledged ? Colors.white : surfaceColor,
+      color: alert.acknowledged ? theme.cardColor : surfaceColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
         side: BorderSide(
           color: alert.acknowledged
-              ? const Color(0xFFE2E8F0)
+              ? colorScheme.outlineVariant
               : accentColor.withValues(alpha: 0.28),
         ),
       ),
@@ -197,15 +220,15 @@ class AlertsScreen extends StatelessWidget {
                         fontWeight: alert.acknowledged
                             ? FontWeight.w500
                             : FontWeight.w700,
-                        color: const Color(0xFF0F172A),
+                        color: textTheme.bodyLarge?.color,
                         height: 1.35,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       timeago.format(alert.timestamp),
-                      style: const TextStyle(
-                        color: Color(0xFF64748B),
+                      style: TextStyle(
+                        color: textTheme.bodyMedium?.color,
                         fontSize: 13,
                       ),
                     ),

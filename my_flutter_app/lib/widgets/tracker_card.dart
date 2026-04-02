@@ -72,13 +72,21 @@ class _TrackerCardState extends State<TrackerCard> {
   }
 
   Color _getStatusBackgroundColor() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     switch (widget.tracker.status) {
       case TrackerStatus.connected:
-        return Colors.green.shade50;
+        return isDark
+            ? Colors.green.shade600.withValues(alpha: 0.16)
+            : Colors.green.shade50;
       case TrackerStatus.outOfRange:
-        return Colors.orange.shade50;
+        return isDark
+            ? Colors.orange.shade600.withValues(alpha: 0.16)
+            : Colors.orange.shade50;
       case TrackerStatus.disconnected:
-        return Colors.red.shade50;
+        return isDark
+            ? Colors.red.shade600.withValues(alpha: 0.16)
+            : Colors.red.shade50;
     }
   }
 
@@ -137,12 +145,15 @@ class _TrackerCardState extends State<TrackerCard> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
+        side: BorderSide(color: colorScheme.outlineVariant),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -150,8 +161,8 @@ class _TrackerCardState extends State<TrackerCard> {
           HapticFeedback.lightImpact();
           context.push('/tracker/${widget.tracker.id}');
         },
-        splashColor: const Color(0xFF2563EB).withValues(alpha: 0.1),
-        highlightColor: const Color(0xFF2563EB).withValues(alpha: 0.05),
+        splashColor: colorScheme.primary.withValues(alpha: 0.1),
+        highlightColor: colorScheme.primary.withValues(alpha: 0.05),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: LayoutBuilder(
@@ -168,7 +179,7 @@ class _TrackerCardState extends State<TrackerCard> {
                       widget.tracker.distance != null ||
                       widget.tracker.serialNumber != null) ...[
                     const SizedBox(height: 14),
-                    const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                    Divider(height: 1, color: colorScheme.outlineVariant),
                     const SizedBox(height: 14),
                     Wrap(
                       spacing: 18,
@@ -239,26 +250,27 @@ class _TrackerCardState extends State<TrackerCard> {
   }
 
   Widget _buildDeviceSummary() {
+    final theme = Theme.of(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           widget.tracker.name,
-          style: const TextStyle(
+          style: theme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w700,
             fontSize: 16,
-            color: Color(0xFF0F172A),
           ),
         ),
         const SizedBox(height: 6),
         Text(
           'Device ID: ${widget.tracker.deviceId}',
-          style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
         ),
         const SizedBox(height: 4),
         Text(
           'Last seen: ${_formatLastSeen(widget.tracker.lastSeen)}',
-          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+          style: theme.textTheme.labelSmall?.copyWith(fontSize: 12),
         ),
       ],
     );
@@ -298,10 +310,13 @@ class _TrackerCardState extends State<TrackerCard> {
   }
 
   Widget _buildSignalBatteryPill() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -314,8 +329,8 @@ class _TrackerCardState extends State<TrackerCard> {
             const SizedBox(width: 4),
             Text(
               '${widget.tracker.batteryLevel}%',
-              style: const TextStyle(
-                color: Color(0xFF475569),
+              style: TextStyle(
+                color: theme.textTheme.bodyMedium?.color,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
@@ -327,6 +342,7 @@ class _TrackerCardState extends State<TrackerCard> {
   }
 
   Widget _buildSignalSection() {
+    final theme = Theme.of(context);
     final signalColor = widget.tracker.signalStrength >= 70
         ? Colors.green.shade500
         : widget.tracker.signalStrength >= 40
@@ -338,10 +354,10 @@ class _TrackerCardState extends State<TrackerCard> {
       children: [
         Row(
           children: [
-            const Text(
+            Text(
               'Signal Strength',
               style: TextStyle(
-                color: Color(0xFF64748B),
+                color: theme.textTheme.bodyMedium?.color,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
@@ -349,8 +365,8 @@ class _TrackerCardState extends State<TrackerCard> {
             const Spacer(),
             Text(
               '${widget.tracker.signalStrength}%',
-              style: const TextStyle(
-                color: Color(0xFF334155),
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
               ),
@@ -362,7 +378,9 @@ class _TrackerCardState extends State<TrackerCard> {
           borderRadius: BorderRadius.circular(999),
           child: LinearProgressIndicator(
             value: widget.tracker.signalStrength / 100,
-            backgroundColor: const Color(0xFFF1F5F9),
+            backgroundColor: theme.colorScheme.outlineVariant.withValues(
+              alpha: 0.4,
+            ),
             color: signalColor,
             minHeight: 7,
           ),
@@ -372,13 +390,15 @@ class _TrackerCardState extends State<TrackerCard> {
   }
 
   Widget _buildMetric(String label, String value) {
+    final theme = Theme.of(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: Color(0xFF64748B),
+          style: TextStyle(
+            color: theme.textTheme.bodyMedium?.color,
             fontSize: 11,
             fontWeight: FontWeight.w600,
           ),
@@ -386,8 +406,8 @@ class _TrackerCardState extends State<TrackerCard> {
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(
-            color: Color(0xFF0F172A),
+          style: TextStyle(
+            color: theme.textTheme.bodyLarge?.color,
             fontSize: 12,
             fontWeight: FontWeight.w700,
           ),

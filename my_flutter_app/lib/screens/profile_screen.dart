@@ -15,7 +15,6 @@ class ProfileScreen extends StatelessWidget {
     final user = context.watch<AuthProvider>().user;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -34,10 +33,11 @@ class ProfileScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildProfileCard(user),
+                        _buildProfileCard(context, user),
                         const SizedBox(height: 24),
-                        _buildSectionTitle('Session'),
+                        _buildSectionTitle(context, 'Session'),
                         _buildActionCard(
+                          context: context,
                           icon: Icons.restart_alt_rounded,
                           iconColor: const Color(0xFF0F766E),
                           backgroundColor: const Color(0xFFECFDF5),
@@ -56,8 +56,9 @@ class ProfileScreen extends StatelessWidget {
                           },
                         ),
                         const SizedBox(height: 16),
-                        _buildSectionTitle('Guided Setup'),
+                        _buildSectionTitle(context, 'Guided Setup'),
                         _buildActionCard(
+                          context: context,
                           icon: Icons.play_circle_outline_rounded,
                           iconColor: const Color(0xFF2563EB),
                           backgroundColor: const Color(0xFFEFF6FF),
@@ -84,13 +85,17 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileCard(User? user) {
+  Widget _buildProfileCard(BuildContext context, User? user) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -107,17 +112,15 @@ class ProfileScreen extends StatelessWidget {
               children: [
                 Text(
                   user?.name ?? 'Local User',
-                  style: const TextStyle(
+                  style: textTheme.headlineSmall?.copyWith(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   user?.email ?? 'local@tracker.app',
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
+                  style: textTheme.bodyMedium?.copyWith(
                     height: 1.35,
                   ),
                 ),
@@ -127,11 +130,13 @@ class ProfileScreen extends StatelessWidget {
                   runSpacing: 8,
                   children: [
                     _buildMetaPill(
+                      context: context,
                       label: (user?.role ?? 'local').toUpperCase(),
                       color: const Color(0xFF1D4ED8),
                       backgroundColor: const Color(0xFFEFF6FF),
                     ),
                     _buildMetaPill(
+                      context: context,
                       label: 'LOCAL SESSION',
                       color: const Color(0xFF0F766E),
                       backgroundColor: const Color(0xFFECFDF5),
@@ -147,14 +152,17 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildMetaPill({
+    required BuildContext context,
     required String label,
     required Color color,
     required Color backgroundColor,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: isDark ? color.withValues(alpha: 0.16) : backgroundColor,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -169,15 +177,17 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
+  Widget _buildSectionTitle(BuildContext context, String title) {
+    final theme = Theme.of(context);
+
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 10),
       child: Text(
         title.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           fontWeight: FontWeight.w700,
           fontSize: 12,
-          color: Color(0xFF94A3B8),
+          color: theme.textTheme.bodySmall?.color,
           letterSpacing: 0.6,
         ),
       ),
@@ -185,6 +195,7 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildActionCard({
+    required BuildContext context,
     required IconData icon,
     required Color iconColor,
     required Color backgroundColor,
@@ -192,6 +203,10 @@ class ProfileScreen extends StatelessWidget {
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(
@@ -202,25 +217,24 @@ class ProfileScreen extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: backgroundColor,
+            color: isDark ? iconColor.withValues(alpha: 0.16) : backgroundColor,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(icon, color: iconColor, size: 20),
         ),
         title: Text(
           title,
-          style: const TextStyle(
+          style: textTheme.labelLarge?.copyWith(
             fontWeight: FontWeight.w700,
-            color: Color(0xFF0F172A),
           ),
         ),
         subtitle: Text(
           subtitle,
-          style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+          style: textTheme.bodySmall?.copyWith(fontSize: 13),
         ),
-        trailing: const Icon(
+        trailing: Icon(
           Icons.chevron_right_rounded,
-          color: Color(0xFF94A3B8),
+          color: theme.iconTheme.color?.withValues(alpha: 0.72),
           size: 22,
         ),
         onTap: onTap,

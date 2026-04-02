@@ -13,19 +13,25 @@ class AppBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFFF8FBFF), Color(0xFFF1F6FE)],
+          colors: [
+            isDark ? const Color(0xFF111827) : const Color(0xFFF8FBFF),
+            isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F6FE),
+          ],
         ),
-        border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+        border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.03),
             blurRadius: 18,
             offset: const Offset(0, -5),
           ),
@@ -37,16 +43,19 @@ class AppBottomNavBar extends StatelessWidget {
           padding: EdgeInsets.fromLTRB(12, 10, 12, bottomInset > 0 ? 10 : 14),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFFFFFFFF), Color(0xFFF7FAFF)],
+                colors: [
+                  isDark ? const Color(0xFF172033) : const Color(0xFFFFFFFF),
+                  isDark ? const Color(0xFF0F172A) : const Color(0xFFF7FAFF),
+                ],
               ),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFDCE8F8)),
+              border: Border.all(color: colorScheme.outlineVariant),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF0F172A).withValues(alpha: 0.05),
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
                   blurRadius: 24,
                   offset: const Offset(0, 10),
                 ),
@@ -61,15 +70,17 @@ class AppBottomNavBar extends StatelessWidget {
                     surfaceTintColor: Colors.transparent,
                     elevation: 0,
                     height: 76,
-                    indicatorColor: const Color(0xFFE0ECFF),
+                    indicatorColor: colorScheme.primary.withValues(
+                      alpha: isDark ? 0.22 : 0.12,
+                    ),
                     labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>((
                       states,
                     ) {
                       final isSelected = states.contains(WidgetState.selected);
                       return TextStyle(
                         color: isSelected
-                            ? const Color(0xFF1D4ED8)
-                            : const Color(0xFF64748B),
+                            ? colorScheme.primary
+                            : theme.textTheme.bodyMedium?.color,
                         fontSize: 12,
                         fontWeight: isSelected
                             ? FontWeight.w700
@@ -83,8 +94,8 @@ class AppBottomNavBar extends StatelessWidget {
                       final isSelected = states.contains(WidgetState.selected);
                       return IconThemeData(
                         color: isSelected
-                            ? const Color(0xFF1D4ED8)
-                            : const Color(0xFF64748B),
+                            ? colorScheme.primary
+                            : theme.iconTheme.color,
                         size: 20,
                       );
                     }),
