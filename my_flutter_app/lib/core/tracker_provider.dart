@@ -110,11 +110,15 @@ class TrackerProvider with ChangeNotifier {
   /// Scans for 1 second every second, updates tracker RSSI and distance in real-time
   void startBackgroundScanning() {
     if (_isBackgroundScanning || _trackers.isEmpty) {
+      if (_trackers.isEmpty) {
+        print('[TrackerProvider] Cannot start background scanning: no registered trackers');
+      }
       return;
     }
 
     _isBackgroundScanning = true;
-    print('[TrackerProvider] ✓ Starting background scanning for ${_trackers.length} trackers');
+    print('[TrackerProvider] ✓ Starting background scanning for ${_trackers.length} registered tracker(s)');
+    print('[TrackerProvider] Registered trackers: ${_trackers.map((t) => t.serialNumber).join(', ')}');
 
     // Scan every 1 second and update registered trackers
     // Using 1 second scan duration for reliable device detection
@@ -145,9 +149,17 @@ class TrackerProvider with ChangeNotifier {
 
   /// Update registered trackers with new scan data
   void _updateTrackersFromScan(List<PendingTracker> scannedTrackers) {
+    if (scannedTrackers.isEmpty) {
+      print('[TrackerProvider] No devices scanned this cycle');
+      return;
+    }
+
+    print('[TrackerProvider] Scanned ${scannedTrackers.length} device(s), checking against ${_trackers.length} registered tracker(s)');
     var updated = false;
 
     for (final scanned in scannedTrackers) {
+      print('[TrackerProvider]   Checking scanned device: ${scanned.serialNumber}, RSSI: ${scanned.rssi}, Distance: ${scanned.distance?.toStringAsFixed(2)}m');
+      
       // Find matching registered tracker
       final index = _trackers.indexWhere(
         (t) => t.serialNumber == scanned.serialNumber,
@@ -155,6 +167,7 @@ class TrackerProvider with ChangeNotifier {
 
       if (index != -1) {
         final tracker = _trackers[index];
+        print('[TrackerProvider]   ✓ Found match for ${scanned.serialNumber}, updating tracker "${tracker.name}"');
 
         // Update RSSI and distance
         final updatedTracker = tracker.copyWith(
@@ -167,12 +180,18 @@ class TrackerProvider with ChangeNotifier {
         );
 
         _trackers[index] = updatedTracker;
+        print('[TrackerProvider]   Updated: ${tracker.name} → Distance: ${updatedTracker.distance?.toStringAsFixed(2)}m, Signal: ${updatedTracker.signalStrength}%');
         updated = true;
+      } else {
+        print('[TrackerProvider]   ✗ No registered tracker found for ${scanned.serialNumber}');
       }
     }
 
     if (updated) {
+      print('[TrackerProvider] ✓ Notifying listeners of ${_trackers.length} tracker updates');
       notifyListeners();
+    } else {
+      print('[TrackerProvider] No trackers were updated this scan cycle');
     }
   }
 
