@@ -427,12 +427,12 @@ class BleService {
         },
       );
 
-      // Start initial scan (5 second duration like Python app for continuous updates)
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
+      // Start initial scan
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 1));
       
-      // Restart scan every 5.1 seconds (5s scan + brief 100ms gap)
-      // This mimics Python's pattern: scan for 5s continuously then restart
-      _continuousScanTimer = Timer.periodic(const Duration(milliseconds: 5100), (timer) async {
+      // Restart scan every 1.1 seconds (scan duration + small overlap for processing)
+      // This mimics Python's continuous scanning pattern
+      _continuousScanTimer = Timer.periodic(const Duration(milliseconds: 1100), (timer) async {
         if (!_isContinuousScanRunning) {
           timer.cancel();
           return;
@@ -440,9 +440,9 @@ class BleService {
 
         try {
           await FlutterBluePlus.stopScan();
-          await Future.delayed(const Duration(milliseconds: 50)); // Brief pause
-          await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
-          print('[BleService] Restarted 5-second continuous scan cycle');
+          await Future.delayed(const Duration(milliseconds: 50)); // Brief pause before restart
+          await FlutterBluePlus.startScan(timeout: const Duration(seconds: 1));
+          print('[BleService] Restarted continuous scan cycle');
         } catch (e) {
           print('[BleService] Error restarting scan: $e');
         }

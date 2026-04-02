@@ -16,8 +16,10 @@ class TrackerProvider with ChangeNotifier {
   bool _isScanning = false;
   bool _isBackgroundScanning = false;
   final Set<String> _pingingDevices = {};  // Track devices currently being pinged
+  Timer? _offlineCheckTimer;  // Timer to check for offline trackers
 
   static const String _trackersStorageKey = 'registered_trackers';
+  static const int _offlineThresholdSeconds = 8;  // Mark as offline if not seen for 8 seconds
 
   List<Tracker> get trackers => _trackers;
   List<Alert> get alerts => _alerts;
@@ -182,9 +184,36 @@ class TrackerProvider with ChangeNotifier {
       await _ble.startContinuousScanning(
         onTrackerUpdate: _onContinuousScanUpdate,
       );
+      
+      // Start offline check timer - checks every 2 seconds if any trackers went offline
+      _offlineCheckTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+        _checkForOfflineTrackers();
+      });
     } catch (e) {
       print('[TrackerProvider] Error starting continuous scan: $e');
       _isBackgroundScanning = false;
+      notifyListeners();
+    }
+  }
+
+  /// Check if any trackers haven't been detected for too long and mark them offline
+  void _checkForOfflineTrackers() {
+    final now = DateTime.now();
+    var statusChanged = false;
+
+    for (int i = 0; i < _trackers.length; i++) {
+      final tracker = _trackers[i];
+      final timeSinceLastSeen = now.difference(tracker.lastSeen).inSeconds;
+
+      // If tracker hasn't been seen for 8+ seconds, mark as disconnected
+      if (timeSinceLastSeen > _offlineThresholdSeconds && tracker.status != TrackerStatus.disconnected) {
+        print('[TrackerProvider] Marking "${tracker.name}" as offline (last seen ${timeSinceLastSeen}s ago)');
+        _trackers[i] = tracker.copyWith(status: TrackerStatus.disconnected);
+        statusChanged = true;
+      }
+    }
+
+    if (statusChanged) {
       notifyListeners();
     }
   }
@@ -245,6 +274,10 @@ class TrackerProvider with ChangeNotifier {
     if (!_isBackgroundScanning) return;
 
     _isBackgroundScanning = false;
+
+    // Cancel offline check timer
+    _offlineCheckTimer?.cancel();
+    _offlineCheckTimer = null;
 
     try {
       await _ble.stopContinuousScanning();
