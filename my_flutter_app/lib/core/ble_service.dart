@@ -348,4 +348,73 @@ class BleService {
       print('[BleService] Error turning on Bluetooth: $e');
     }
   }
+
+  /// Ping a registered device via BLE GATT
+  /// Sends a ping command to the device and waits for GATT state reset (4.2 seconds)
+  Future<bool> pingDevice(String deviceAddress) async {
+    try {
+      print('[BleService] Starting ping for device: $deviceAddress');
+
+      // Create BluetoothDevice from address
+      final targetDevice = BluetoothDevice.fromId(deviceAddress);
+
+      // Connect with 3 second timeout
+      print('[BleService] Connecting to device for ping...');
+      await targetDevice.connect(timeout: const Duration(seconds: 3));
+      print('[BleService] Connected, discovering services...');
+
+      // Discover services and characteristics
+      final services = await targetDevice.discoverServices();
+
+      // Find the ping characteristic (UUID from ESP32 firmware)
+      const pingCharUuid = '12345678-1234-5678-1234-56789abcdef1';
+      BluetoothCharacteristic? pingChar;
+
+      for (final service in services) {
+        for (final char in service.characteristics) {
+          // Compare UUID strings (flutter_blue_plus uses lowercase)
+          if (char.uuid.toString().toLowerCase() == pingCharUuid.toLowerCase()) {
+            pingChar = char;
+            print('[BleService] Found ping characteristic');
+            break;
+          }
+        }
+        if (pingChar != null) break;
+      }
+
+      if (pingChar == null) {
+        print('[BleService] Ping characteristic not found on device');
+        await targetDevice.disconnect();
+        return false;
+      }
+
+      // Write ping command (0x01 byte) to trigger device reset
+      print('[BleService] Writing ping command (0x01)...');
+      await pingChar.write([0x01], withoutResponse: false);
+      print('[BleService] Ping command sent, waiting for device GATT reset...');
+
+      // Wait 4.2 seconds for device GATT recovery
+      // Device disables GATT for ~3 seconds, plus buffer for safety
+      await Future.delayed(const Duration(milliseconds: 4200));
+
+      // Disconnect gracefully
+      print('[BleService] Disconnecting after ping...');
+      await targetDevice.disconnect();
+      print('[BleService] Ping completed successfully');
+
+      return true;
+    } catch (e) {
+      print('[BleService] Ping error: $e');
+
+      // Attempt graceful disconnect on error
+      try {
+        final targetDevice = BluetoothDevice.fromId(deviceAddress);
+        await targetDevice.disconnect();
+      } catch (_) {
+        // Ignore disconnect errors
+      }
+
+      return false;
+    }
+  }
 }

@@ -31,7 +31,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _visibleGridCount = _gridPageSize;
 
   @override
+  void initState() {
+    super.initState();
+    // Start background scanning when dashboard loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<TrackerProvider>().startBackgroundScanning();
+    });
+  }
+
+  @override
   void dispose() {
+    // Stop background scanning when dashboard unloads
+    context.read<TrackerProvider>().stopBackgroundScanning();
     _searchController.dispose();
     super.dispose();
   }

@@ -11,11 +11,14 @@ class TrackerProvider with ChangeNotifier {
   final _ble = BleService();
 
   bool _isScanning = false;
+  bool _isBackgroundScanning = false;
+  Timer? _backgroundScanTimer;
 
   List<Tracker> get trackers => _trackers;
   List<Alert> get alerts => _alerts;
   List<PendingTracker> get pendingTrackers => _pendingTrackers;
   bool get isScanning => _isScanning;
+  bool get isBackgroundScanning => _isBackgroundScanning;
 
   // Configuration getters
   double get txPower => _ble.txPower;
@@ -97,7 +100,107 @@ class TrackerProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void renameTracker(String id, String newName) {
+  // ============================================================================
+  // Background Scanning (Dashboard)
+  // ============================================================================
+
+  /// Start continuous background scanning for registered trackers
+  /// Updates tracker RSSI and distance every second
+  void startBackgroundScanning() {
+    if (_isBackgroundScanning || _trackers.isEmpty) {
+      return;
+    }
+
+    _isBackgroundScanning = true;
+    print('[TrackerProvider] ✓ Starting background scanning for ${_trackers.length} trackers');
+
+    // Scan every 1 second and update registered trackers
+    _backgroundScanTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      try {
+        final scannedTrackers = await _ble.scanForTrackers(
+          scanDuration: const Duration(milliseconds: 500),
+        );
+
+        // Update registered trackers with scan results
+        _updateTrackersFromScan(scannedTrackers);
+      } catch (e) {
+        print('[TrackerProvider] Background scan error: $e');
+      }
+    });
+
+    notifyListeners();
+  }
+
+  /// Stop continuous background scanning
+  void stopBackgroundScanning() {
+    _backgroundScanTimer?.cancel();
+    _backgroundScanTimer = null;
+    _isBackgroundScanning = false;
+    print('[TrackerProvider] ✓ Stopped background scanning');
+    notifyListeners();
+  }
+
+  /// Update registered trackers with new scan data
+  void _updateTrackersFromScan(List<PendingTracker> scannedTrackers) {
+    var updated = false;
+
+    for (final scanned in scannedTrackers) {
+      // Find matching registered tracker
+      final index = _trackers.indexWhere(
+        (t) => t.serialNumber == scanned.serialNumber,
+      );
+
+      if (index != -1) {
+        final tracker = _trackers[index];
+
+        // Update RSSI and distance
+        final updatedTracker = tracker.copyWith(
+          rssi: scanned.rssi,
+          rssiFiltered: scanned.rssiFiltered,
+          distance: scanned.distance,
+          lastSeen: DateTime.now(),
+          signalStrength: scanned.signalStrength,
+          status: TrackerStatus.connected,
+        );
+
+        _trackers[index] = updatedTracker;
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      notifyListeners();
+    }
+  }
+
+  // ============================================================================
+  // Ping Feature
+  // ============================================================================
+
+  /// Ping a tracker device via BLE GATT
+  Future<bool> pingTracker(String trackerId) async {
+    final tracker = getTracker(trackerId);
+    if (tracker == null || tracker.bleAddress == null) {
+      print('[TrackerProvider] Cannot ping: tracker not found or no BLE address');
+      return false;
+    }
+
+    try {
+      print('[TrackerProvider] Pinging tracker: ${tracker.name}');
+      final success = await _ble.pingDevice(tracker.bleAddress!);
+
+      if (success) {
+        print('[TrackerProvider] ✓ Ping successful for ${tracker.name}');
+      } else {
+        print('[TrackerProvider] ✗ Ping failed for ${tracker.name}');
+      }
+
+      return success;
+    } catch (e) {
+      print('[TrackerProvider] Ping error: $e');
+      return false;
+    }
+  }
     final index = _trackers.indexWhere((t) => t.id == id);
     if (index != -1) {
       _trackers[index] = _trackers[index].copyWith(name: newName);

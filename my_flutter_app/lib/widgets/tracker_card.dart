@@ -3,14 +3,65 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
+import 'package:my_flutter_app/core/tracker_provider.dart';
+import 'package:provider/provider.dart';
 
-class TrackerCard extends StatelessWidget {
+class TrackerCard extends StatefulWidget {
   final Tracker tracker;
 
   const TrackerCard({super.key, required this.tracker});
 
+  @override
+  State<TrackerCard> createState() => _TrackerCardState();
+}
+
+class _TrackerCardState extends State<TrackerCard> {
+  bool _isPinging = false;
+
+  Future<void> _handlePing() async {
+    setState(() {
+      _isPinging = true;
+    });
+
+    try {
+      final success =
+          await context.read<TrackerProvider>().pingTracker(widget.tracker.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success
+                  ? 'Ping successful for ${widget.tracker.name}'
+                  : 'Failed to ping ${widget.tracker.name}',
+            ),
+            duration: const Duration(seconds: 3),
+            backgroundColor:
+                success ? Colors.green.shade600 : Colors.red.shade600,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error pinging device: $e'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red.shade600,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPinging = false;
+        });
+      }
+    }
+  }
+
   Color _getStatusColor() {
-    switch (tracker.status) {
+    switch (widget.tracker.status) {
       case TrackerStatus.connected:
         return Colors.green.shade600;
       case TrackerStatus.outOfRange:
@@ -21,7 +72,7 @@ class TrackerCard extends StatelessWidget {
   }
 
   Color _getStatusBackgroundColor() {
-    switch (tracker.status) {
+    switch (widget.tracker.status) {
       case TrackerStatus.connected:
         return Colors.green.shade50;
       case TrackerStatus.outOfRange:
@@ -32,7 +83,7 @@ class TrackerCard extends StatelessWidget {
   }
 
   String _getStatusText() {
-    switch (tracker.status) {
+    switch (widget.tracker.status) {
       case TrackerStatus.connected:
         return 'Connected';
       case TrackerStatus.outOfRange:
@@ -43,13 +94,13 @@ class TrackerCard extends StatelessWidget {
   }
 
   Widget _getSignalIcon() {
-    if (tracker.status == TrackerStatus.disconnected) {
+    if (widget.tracker.status == TrackerStatus.disconnected) {
       return const Icon(LucideIcons.wifiOff, color: Colors.red, size: 20);
     }
-    if (tracker.signalStrength >= 70) {
+    if (widget.tracker.signalStrength >= 70) {
       return const Icon(LucideIcons.signalHigh, color: Colors.green, size: 20);
     }
-    if (tracker.signalStrength >= 40) {
+    if (widget.tracker.signalStrength >= 40) {
       return const Icon(
         LucideIcons.signalMedium,
         color: Colors.orange,
@@ -60,11 +111,11 @@ class TrackerCard extends StatelessWidget {
   }
 
   Widget? _getBatteryIcon() {
-    if (tracker.batteryLevel == null) return null;
-    if (tracker.batteryLevel! >= 60) {
+    if (widget.tracker.batteryLevel == null) return null;
+    if (widget.tracker.batteryLevel! >= 60) {
       return Icon(LucideIcons.battery, color: Colors.green.shade600, size: 16);
     }
-    if (tracker.batteryLevel! >= 30) {
+    if (widget.tracker.batteryLevel! >= 30) {
       return Icon(
         LucideIcons.batteryMedium,
         color: Colors.orange.shade600,
@@ -97,7 +148,7 @@ class TrackerCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         onTap: () {
           HapticFeedback.lightImpact();
-          context.push('/tracker/${tracker.id}');
+          context.push('/tracker/${widget.tracker.id}');
         },
         splashColor: const Color(0xFF2563EB).withValues(alpha: 0.1),
         highlightColor: const Color(0xFF2563EB).withValues(alpha: 0.05),
@@ -113,9 +164,9 @@ class TrackerCard extends StatelessWidget {
                   if (isCompact) _buildCompactHeader() else _buildWideHeader(),
                   const SizedBox(height: 14),
                   _buildSignalSection(),
-                  if (tracker.rssi != null ||
-                      tracker.distance != null ||
-                      tracker.serialNumber != null) ...[
+                  if (widget.tracker.rssi != null ||
+                      widget.tracker.distance != null ||
+                      widget.tracker.serialNumber != null) ...[
                     const SizedBox(height: 14),
                     const Divider(height: 1, color: Color(0xFFE2E8F0)),
                     const SizedBox(height: 14),
@@ -125,20 +176,22 @@ class TrackerCard extends StatelessWidget {
                       children: [
                         _buildMetric(
                           'RSSI',
-                          tracker.rssi != null
-                              ? '${tracker.rssi} dBm'
+                          widget.tracker.rssi != null
+                              ? '${widget.tracker.rssi} dBm'
                               : '-- dBm',
                         ),
                         _buildMetric(
                           'Distance',
-                          tracker.distance != null
-                              ? '${tracker.distance!.toStringAsFixed(2)} m'
+                          widget.tracker.distance != null
+                              ? '${widget.tracker.distance!.toStringAsFixed(2)} m'
                               : '-- m',
                         ),
-                        if (tracker.serialNumber != null)
-                          _buildMetric('Serial', tracker.serialNumber!),
+                        if (widget.tracker.serialNumber != null)
+                          _buildMetric('Serial', widget.tracker.serialNumber!),
                       ],
                     ),
+                    const SizedBox(height: 14),
+                    _buildPingButton(),
                   ],
                 ],
               );
@@ -190,7 +243,7 @@ class TrackerCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          tracker.name,
+          widget.tracker.name,
           style: const TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: 16,
@@ -199,12 +252,12 @@ class TrackerCard extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Device ID: ${tracker.deviceId}',
+          'Device ID: ${widget.tracker.deviceId}',
           style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
         ),
         const SizedBox(height: 4),
         Text(
-          'Last seen: ${_formatLastSeen(tracker.lastSeen)}',
+          'Last seen: ${_formatLastSeen(widget.tracker.lastSeen)}',
           style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
         ),
       ],
@@ -255,12 +308,12 @@ class TrackerCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _getSignalIcon(),
-          if (tracker.batteryLevel != null) ...[
+          if (widget.tracker.batteryLevel != null) ...[
             const SizedBox(width: 10),
             _getBatteryIcon()!,
             const SizedBox(width: 4),
             Text(
-              '${tracker.batteryLevel}%',
+              '${widget.tracker.batteryLevel}%',
               style: const TextStyle(
                 color: Color(0xFF475569),
                 fontSize: 12,
@@ -274,9 +327,9 @@ class TrackerCard extends StatelessWidget {
   }
 
   Widget _buildSignalSection() {
-    final signalColor = tracker.signalStrength >= 70
+    final signalColor = widget.tracker.signalStrength >= 70
         ? Colors.green.shade500
-        : tracker.signalStrength >= 40
+        : widget.tracker.signalStrength >= 40
         ? Colors.orange.shade500
         : Colors.red.shade500;
 
@@ -295,7 +348,7 @@ class TrackerCard extends StatelessWidget {
             ),
             const Spacer(),
             Text(
-              '${tracker.signalStrength}%',
+              '${widget.tracker.signalStrength}%',
               style: const TextStyle(
                 color: Color(0xFF334155),
                 fontSize: 11,
@@ -308,7 +361,7 @@ class TrackerCard extends StatelessWidget {
         ClipRRect(
           borderRadius: BorderRadius.circular(999),
           child: LinearProgressIndicator(
-            value: tracker.signalStrength / 100,
+            value: widget.tracker.signalStrength / 100,
             backgroundColor: const Color(0xFFF1F5F9),
             color: signalColor,
             minHeight: 7,
@@ -340,6 +393,33 @@ class TrackerCard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildPingButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _isPinging ? null : _handlePing,
+        icon: _isPinging
+            ? SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              Colors.blue.shade600,
+            ),
+          ),
+        )
+            : const Icon(LucideIcons.radio),
+        label: Text(_isPinging ? 'Pinging...' : 'Ping Device'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.blue.shade600,
+          side: BorderSide(color: Colors.blue.shade600),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+      ),
     );
   }
 }
