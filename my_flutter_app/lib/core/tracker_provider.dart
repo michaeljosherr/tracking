@@ -13,6 +13,7 @@ class TrackerProvider with ChangeNotifier {
 
   bool _isScanning = false;
   bool _isBackgroundScanning = false;
+  bool _isScanInProgress = false;  // Prevent concurrent scans
   Timer? _backgroundScanTimer;
   final Set<String> _pingingDevices = {};  // Track devices currently being pinged
 
@@ -120,10 +121,18 @@ class TrackerProvider with ChangeNotifier {
     print('[TrackerProvider] ✓ Starting background scanning for ${_trackers.length} registered tracker(s)');
     print('[TrackerProvider] Registered trackers: ${_trackers.map((t) => t.serialNumber).join(', ')}');
 
-    // Scan every 1 second and update registered trackers
-    // Using 1 second scan duration for reliable device detection
-    _backgroundScanTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+    // Scan every 2 seconds with 1 second scan duration to avoid overlapping scans
+    // This gives 1 second buffer between scans for results processing
+    _backgroundScanTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      // Skip this cycle if a scan is already in progress
+      if (_isScanInProgress) {
+        print('[TrackerProvider] Scan already in progress, skipping this cycle');
+        return;
+      }
+
+      _isScanInProgress = true;
       try {
+        print('[TrackerProvider] Starting background scan cycle...');
         final scannedTrackers = await _ble.scanForTrackers(
           scanDuration: const Duration(seconds: 1),
         );
@@ -132,6 +141,8 @@ class TrackerProvider with ChangeNotifier {
         _updateTrackersFromScan(scannedTrackers);
       } catch (e) {
         print('[TrackerProvider] Background scan error: $e');
+      } finally {
+        _isScanInProgress = false;
       }
     });
 
@@ -143,6 +154,7 @@ class TrackerProvider with ChangeNotifier {
     _backgroundScanTimer?.cancel();
     _backgroundScanTimer = null;
     _isBackgroundScanning = false;
+    _isScanInProgress = false;
     print('[TrackerProvider] ✓ Stopped background scanning');
     notifyListeners();
   }
