@@ -77,8 +77,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.white,
       body: Stack(
         children: [
           // Page view with slides
@@ -100,10 +103,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             right: 0,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: theme.cardColor,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, -2),
                   ),
@@ -124,8 +127,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(4),
                           color: _currentPage == index
-                              ? const Color(0xFF2563EB)
-                              : const Color(0xFFE2E8F0),
+                              ? colorScheme.primary
+                              : colorScheme.outlineVariant,
                         ),
                       ),
                     ),
@@ -139,17 +142,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           onPressed: _skipOnboarding,
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text(
+                          child: Text(
                             'Skip',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 16,
-                              color: Color(0xFF64748B),
+                              color: theme.textTheme.bodyMedium?.color,
                             ),
                           ),
                         ),
@@ -172,7 +174,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2563EB),
+                            backgroundColor: colorScheme.primary,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -306,9 +308,9 @@ class _OnboardingSlideWidgetState extends State<OnboardingSlideWidget>
                   height: 120,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.5),
+                      color: Colors.white.withValues(alpha: 0.5),
                       width: 2,
                     ),
                   ),
@@ -383,10 +385,10 @@ class _OnboardingSlideWidgetState extends State<OnboardingSlideWidget>
                   ),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
+                      color: Colors.white.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.25),
+                        color: Colors.white.withValues(alpha: 0.25),
                       ),
                     ),
                     padding: const EdgeInsets.all(16),
@@ -439,7 +441,7 @@ class _OnboardingSlideWidgetState extends State<OnboardingSlideWidget>
                                     hint,
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.white.withOpacity(0.9),
+                                      color: Colors.white.withValues(alpha: 0.9),
                                       height: 1.4,
                                     ),
                                   ),
@@ -447,7 +449,7 @@ class _OnboardingSlideWidgetState extends State<OnboardingSlideWidget>
                               ],
                             ),
                           );
-                        }).toList(),
+                        }),
                       ],
                     ),
                   ),

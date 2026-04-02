@@ -125,7 +125,9 @@ class _DismissibleAlertState extends State<DismissibleAlert>
                           width: 32,
                           height: 32,
                           decoration: BoxDecoration(
-                            color: (colors['icon'] as Color).withOpacity(0.15),
+                            color: (colors['icon'] as Color).withValues(
+                              alpha: 0.15,
+                            ),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Icon(
@@ -163,7 +165,7 @@ class _DismissibleAlertState extends State<DismissibleAlert>
                     widget.message!,
                     style: TextStyle(
                       fontSize: 13,
-                      color: (colors['text'] as Color).withOpacity(0.7),
+                      color: (colors['text'] as Color).withValues(alpha: 0.7),
                     ),
                   ),
                 ],
@@ -197,46 +199,64 @@ class _DismissibleAlertState extends State<DismissibleAlert>
   }
 
   Map<String, dynamic> _getAlertColors() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     switch (widget.type) {
       case AlertType.success:
         return {
-          'background': Colors.green.shade50,
-          'border': Colors.green.shade200,
-          'text': Colors.green.shade900,
+          'background': isDark
+              ? Colors.green.shade600.withValues(alpha: 0.14)
+              : Colors.green.shade50,
+          'border': isDark ? Colors.green.shade700 : Colors.green.shade200,
+          'text': isDark ? Colors.green.shade100 : Colors.green.shade900,
           'icon': Colors.green.shade600,
           'iconData': LucideIcons.check,
-          'actionBg': Colors.green.shade100,
-          'actionText': Colors.green.shade700,
+          'actionBg': isDark
+              ? Colors.green.shade600.withValues(alpha: 0.18)
+              : Colors.green.shade100,
+          'actionText': isDark ? Colors.green.shade100 : Colors.green.shade700,
         };
       case AlertType.error:
         return {
-          'background': Colors.red.shade50,
-          'border': Colors.red.shade200,
-          'text': Colors.red.shade900,
+          'background': isDark
+              ? Colors.red.shade600.withValues(alpha: 0.14)
+              : Colors.red.shade50,
+          'border': isDark ? Colors.red.shade700 : Colors.red.shade200,
+          'text': isDark ? Colors.red.shade100 : Colors.red.shade900,
           'icon': Colors.red.shade600,
           'iconData': Icons.error_outline,
-          'actionBg': Colors.red.shade100,
-          'actionText': Colors.red.shade700,
+          'actionBg': isDark
+              ? Colors.red.shade600.withValues(alpha: 0.18)
+              : Colors.red.shade100,
+          'actionText': isDark ? Colors.red.shade100 : Colors.red.shade700,
         };
       case AlertType.warning:
         return {
-          'background': Colors.amber.shade50,
-          'border': Colors.amber.shade200,
-          'text': Colors.amber.shade900,
+          'background': isDark
+              ? Colors.amber.shade600.withValues(alpha: 0.14)
+              : Colors.amber.shade50,
+          'border': isDark ? Colors.amber.shade700 : Colors.amber.shade200,
+          'text': isDark ? Colors.amber.shade100 : Colors.amber.shade900,
           'icon': Colors.amber.shade600,
           'iconData': Icons.warning,
-          'actionBg': Colors.amber.shade100,
-          'actionText': Colors.amber.shade700,
+          'actionBg': isDark
+              ? Colors.amber.shade600.withValues(alpha: 0.18)
+              : Colors.amber.shade100,
+          'actionText': isDark ? Colors.amber.shade100 : Colors.amber.shade700,
         };
       case AlertType.info:
         return {
-          'background': Colors.blue.shade50,
-          'border': Colors.blue.shade200,
-          'text': Colors.blue.shade900,
+          'background': isDark
+              ? Colors.blue.shade600.withValues(alpha: 0.14)
+              : Colors.blue.shade50,
+          'border': isDark ? Colors.blue.shade700 : Colors.blue.shade200,
+          'text': isDark ? Colors.blue.shade100 : Colors.blue.shade900,
           'icon': Colors.blue.shade600,
           'iconData': Icons.info_outline,
-          'actionBg': Colors.blue.shade100,
-          'actionText': Colors.blue.shade700,
+          'actionBg': isDark
+              ? Colors.blue.shade600.withValues(alpha: 0.18)
+              : Colors.blue.shade100,
+          'actionText': isDark ? Colors.blue.shade100 : Colors.blue.shade700,
         };
     }
   }

@@ -22,6 +22,10 @@ class _AppTopBarState extends State<AppTopBar> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
     final provider = context.watch<TrackerProvider>();
     final horizontalPadding = context.responsive.responsiveValue(
       mobile: 16.0,
@@ -39,15 +43,18 @@ class _AppTopBarState extends State<AppTopBar> {
       width: double.infinity,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFF8FBFF), Color(0xFFF1F6FE)],
+            colors: [
+              isDark ? const Color(0xFF111827) : const Color(0xFFF8FBFF),
+              isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F6FE),
+            ],
           ),
-          border: const Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+          border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
+              color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.03),
               blurRadius: 18,
               offset: const Offset(0, 5),
             ),
@@ -64,16 +71,19 @@ class _AppTopBarState extends State<AppTopBar> {
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [Color(0xFFFFFFFF), Color(0xFFF7FAFF)],
+                      colors: [
+                        isDark ? const Color(0xFF172033) : const Color(0xFFFFFFFF),
+                        isDark ? const Color(0xFF0F172A) : const Color(0xFFF7FAFF),
+                      ],
                     ),
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: const Color(0xFFDCE8F8)),
+                    border: Border.all(color: colorScheme.outlineVariant),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF0F172A).withValues(alpha: 0.05),
+                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
                         blurRadius: 24,
                         offset: const Offset(0, 10),
                       ),
@@ -115,12 +125,12 @@ class _AppTopBarState extends State<AppTopBar> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
+                                  Text(
                                     'Tracker workspace',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: Color(0xFF2563EB),
+                                    style: textTheme.labelSmall?.copyWith(
+                                      color: colorScheme.primary,
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
                                       letterSpacing: 0.35,
@@ -129,10 +139,9 @@ class _AppTopBarState extends State<AppTopBar> {
                                   const SizedBox(height: 8),
                                   Text(
                                     widget.title,
-                                    style: const TextStyle(
+                                    style: textTheme.headlineSmall?.copyWith(
                                       fontSize: 22,
                                       fontWeight: FontWeight.w700,
-                                      color: Color(0xFF0F172A),
                                       height: 1.05,
                                       letterSpacing: -0.3,
                                     ),
@@ -141,8 +150,7 @@ class _AppTopBarState extends State<AppTopBar> {
                                     const SizedBox(height: 6),
                                     Text(
                                       widget.subtitle!,
-                                      style: const TextStyle(
-                                        color: Color(0xFF64748B),
+                                      style: textTheme.bodySmall?.copyWith(
                                         fontSize: 12.5,
                                         height: 1.4,
                                       ),
@@ -186,18 +194,25 @@ class _AppTopBarState extends State<AppTopBar> {
     required IconData icon,
     required VoidCallback onTap,
   }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFFFFFFF), Color(0xFFF4F8FF)],
+          colors: [
+            isDark ? const Color(0xFF1E293B) : const Color(0xFFFFFFFF),
+            isDark ? const Color(0xFF172033) : const Color(0xFFF4F8FF),
+          ],
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFD6E4FF)),
+        border: Border.all(color: colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1D4ED8).withValues(alpha: 0.06),
+            color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.06),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -214,7 +229,7 @@ class _AppTopBarState extends State<AppTopBar> {
             width: 44,
             height: 44,
             child: Center(
-              child: Icon(icon, color: const Color(0xFF2563EB), size: 18),
+              child: Icon(icon, color: colorScheme.primary, size: 18),
             ),
           ),
         ),
@@ -226,23 +241,27 @@ class _AppTopBarState extends State<AppTopBar> {
     required List<Alert> recentAlerts,
     required int badgeCount,
   }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Container(
           decoration: BoxDecoration(
             color: badgeCount > 0
-                ? const Color(0xFFF4F8FF)
-                : const Color(0xFFF8FAFC),
+                ? colorScheme.primary.withValues(alpha: isDark ? 0.18 : 0.08)
+                : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: badgeCount > 0
-                  ? const Color(0xFFD6E4FF)
-                  : const Color(0xFFE5EAF0),
+                  ? colorScheme.primary.withValues(alpha: isDark ? 0.3 : 0.18)
+                  : colorScheme.outlineVariant,
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+                color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.04),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -262,8 +281,8 @@ class _AppTopBarState extends State<AppTopBar> {
                   child: Icon(
                     LucideIcons.bell,
                     color: badgeCount > 0
-                        ? const Color(0xFF1D4ED8)
-                        : const Color(0xFF475569),
+                        ? colorScheme.primary
+                        : theme.iconTheme.color,
                     size: 18,
                   ),
                 ),
@@ -280,7 +299,7 @@ class _AppTopBarState extends State<AppTopBar> {
               decoration: BoxDecoration(
                 color: const Color(0xFFEF4444),
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: Colors.white, width: 2),
+                border: Border.all(color: theme.cardColor, width: 2),
               ),
               child: Text(
                 '$badgeCount',
@@ -397,20 +416,24 @@ class _AlertsMenuPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 12),
           child: Material(
-            color: Colors.white,
-            surfaceTintColor: Colors.white,
+            color: theme.cardColor,
+            surfaceTintColor: Colors.transparent,
             elevation: 14,
             borderRadius: BorderRadius.circular(20),
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: colorScheme.outlineVariant),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -420,13 +443,13 @@ class _AlertsMenuPanel extends StatelessWidget {
                     unreadCount: unreadCount,
                   ),
                   if (recentAlerts.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 6, 16, 14),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
                           'No recent alerts',
-                          style: TextStyle(color: Color(0xFF64748B)),
+                          style: textTheme.bodyMedium,
                         ),
                       ),
                     )
@@ -438,7 +461,7 @@ class _AlertsMenuPanel extends StatelessWidget {
                       ),
                     ),
                   if (unreadCount > 0) ...[
-                    const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                    Divider(height: 1, color: colorScheme.outlineVariant),
                     _AlertsMenuAction(
                       icon: LucideIcons.checkCheck,
                       label: 'Mark all as read',
@@ -446,7 +469,7 @@ class _AlertsMenuPanel extends StatelessWidget {
                       onTap: () => onSelect('mark-all'),
                     ),
                   ],
-                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                  Divider(height: 1, color: colorScheme.outlineVariant),
                   _AlertsMenuAction(
                     icon: LucideIcons.list,
                     label: 'View all alerts',
@@ -458,7 +481,14 @@ class _AlertsMenuPanel extends StatelessWidget {
             ),
           ),
         ),
-        Positioned(top: 1, left: caretLeft, child: const _AlertsMenuCaret()),
+        Positioned(
+          top: 1,
+          left: caretLeft,
+          child: _AlertsMenuCaret(
+            fillColor: theme.cardColor,
+            borderColor: colorScheme.outlineVariant,
+          ),
+        ),
       ],
     );
   }
@@ -475,16 +505,19 @@ class _AlertsMenuHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
       child: Row(
         children: [
-          const Text(
+          Text(
             'Recent alerts',
-            style: TextStyle(
+            style: textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
               fontSize: 15,
-              color: Color(0xFF0F172A),
             ),
           ),
           const Spacer(),
@@ -492,8 +525,12 @@ class _AlertsMenuHeader extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: unreadCount > 0
-                  ? const Color(0xFFFEF2F2)
-                  : const Color(0xFFEFF6FF),
+                  ? const Color(0xFFDC2626).withValues(
+                      alpha: theme.brightness == Brightness.dark ? 0.16 : 0.08,
+                    )
+                  : colorScheme.primary.withValues(
+                      alpha: theme.brightness == Brightness.dark ? 0.16 : 0.08,
+                    ),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
@@ -501,7 +538,7 @@ class _AlertsMenuHeader extends StatelessWidget {
               style: TextStyle(
                 color: unreadCount > 0
                     ? const Color(0xFFDC2626)
-                    : const Color(0xFF2563EB),
+                    : colorScheme.primary,
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
               ),
@@ -528,6 +565,8 @@ class _AlertsMenuAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -538,7 +577,10 @@ class _AlertsMenuAction extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               label,
-              style: TextStyle(color: color, fontWeight: FontWeight.w700),
+              style: textTheme.labelLarge?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
@@ -555,6 +597,9 @@ class _AlertMenuTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+
     final accentColor = switch (alert.type) {
       'disconnected' => const Color(0xFFDC2626),
       'out-of-range' => const Color(0xFFEA580C),
@@ -598,9 +643,8 @@ class _AlertMenuTile extends StatelessWidget {
                             alert.trackerName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: textTheme.labelLarge?.copyWith(
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF0F172A),
                             ),
                           ),
                         ),
@@ -631,17 +675,15 @@ class _AlertMenuTile extends StatelessWidget {
                       alert.message,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: textTheme.bodySmall?.copyWith(
                         fontSize: 12,
-                        color: Color(0xFF475569),
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       timeago.format(alert.timestamp),
-                      style: const TextStyle(
+                      style: textTheme.labelSmall?.copyWith(
                         fontSize: 11,
-                        color: Color(0xFF94A3B8),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -663,26 +705,43 @@ class _AlertMenuTile extends StatelessWidget {
 }
 
 class _AlertsMenuCaret extends StatelessWidget {
-  const _AlertsMenuCaret();
+  final Color fillColor;
+  final Color borderColor;
+
+  const _AlertsMenuCaret({
+    required this.fillColor,
+    required this.borderColor,
+  });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: 20,
       height: 12,
-      child: CustomPaint(painter: _AlertsMenuCaretPainter()),
+      child: CustomPaint(
+        painter: _AlertsMenuCaretPainter(
+          fillColor: fillColor,
+          borderColor: borderColor,
+        ),
+      ),
     );
   }
 }
 
 class _AlertsMenuCaretPainter extends CustomPainter {
-  const _AlertsMenuCaretPainter();
+  final Color fillColor;
+  final Color borderColor;
+
+  const _AlertsMenuCaretPainter({
+    required this.fillColor,
+    required this.borderColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final fillPaint = Paint()..color = Colors.white;
+    final fillPaint = Paint()..color = fillColor;
     final borderPaint = Paint()
-      ..color = const Color(0xFFE2E8F0)
+      ..color = borderColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
 

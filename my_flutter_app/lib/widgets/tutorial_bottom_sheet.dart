@@ -76,6 +76,10 @@ class _TutorialBottomSheetState extends State<TutorialBottomSheet>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return SlideTransition(
       position: _slideController.drive(
         Tween<Offset>(
@@ -84,8 +88,8 @@ class _TutorialBottomSheetState extends State<TutorialBottomSheet>
         ).chain(CurveTween(curve: Curves.easeOut)),
       ),
       child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: theme.cardColor,
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(24),
             topRight: Radius.circular(24),
@@ -111,7 +115,7 @@ class _TutorialBottomSheetState extends State<TutorialBottomSheet>
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFCBD5E1),
+                          color: colorScheme.outline,
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -124,13 +128,13 @@ class _TutorialBottomSheetState extends State<TutorialBottomSheet>
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF2563EB).withOpacity(0.1),
+                            color: colorScheme.primary.withValues(alpha: 0.12),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
+                          child: Icon(
                             LucideIcons.bookOpen,
                             size: 20,
-                            color: Color(0xFF2563EB),
+                            color: colorScheme.primary,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -140,18 +144,16 @@ class _TutorialBottomSheetState extends State<TutorialBottomSheet>
                             children: [
                               Text(
                                 widget.title,
-                                style: const TextStyle(
+                                style: textTheme.headlineSmall?.copyWith(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF0F172A),
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 'Step ${_currentStep + 1} of ${widget.steps.length}',
-                                style: const TextStyle(
+                                style: textTheme.bodySmall?.copyWith(
                                   fontSize: 12,
-                                  color: Color(0xFF64748B),
                                 ),
                               ),
                             ],
@@ -177,9 +179,9 @@ class _TutorialBottomSheetState extends State<TutorialBottomSheet>
                       child: LinearProgressIndicator(
                         minHeight: 6,
                         value: (_currentStep + 1) / widget.steps.length,
-                        backgroundColor: const Color(0xFFE2E8F0),
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          Color(0xFF2563EB),
+                        backgroundColor: colorScheme.outlineVariant,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          colorScheme.primary,
                         ),
                       ),
                     ),
@@ -266,6 +268,9 @@ class TutorialStepWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -275,13 +280,13 @@ class TutorialStepWidget extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF2563EB).withOpacity(0.1),
+              color: colorScheme.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               step.icon,
               size: 40,
-              color: const Color(0xFF2563EB),
+              color: colorScheme.primary,
             ),
           ),
           const SizedBox(height: 20),
@@ -289,10 +294,9 @@ class TutorialStepWidget extends StatelessWidget {
           // Title
           Text(
             step.title,
-            style: const TextStyle(
+            style: theme.textTheme.titleLarge?.copyWith(
               fontSize: 18,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF0F172A),
             ),
           ),
           const SizedBox(height: 8),
@@ -300,9 +304,8 @@ class TutorialStepWidget extends StatelessWidget {
           // Description
           Text(
             step.description,
-            style: const TextStyle(
+            style: theme.textTheme.bodyMedium?.copyWith(
               fontSize: 14,
-              color: Color(0xFF64748B),
               height: 1.5,
             ),
           ),
@@ -322,9 +325,9 @@ class TutorialStepWidget extends StatelessWidget {
                   Container(
                     width: 24,
                     height: 24,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Color(0xFF2563EB),
+                      color: colorScheme.primary,
                     ),
                     alignment: Alignment.center,
                     child: Text(
@@ -340,9 +343,8 @@ class TutorialStepWidget extends StatelessWidget {
                   Expanded(
                     child: Text(
                       detail,
-                      style: const TextStyle(
+                      style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 13,
-                        color: Color(0xFF64748B),
                         height: 1.4,
                       ),
                     ),
@@ -350,7 +352,7 @@ class TutorialStepWidget extends StatelessWidget {
                 ],
               ),
             );
-          }).toList(),
+          }),
         ],
       ),
     );

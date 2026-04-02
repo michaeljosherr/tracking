@@ -97,6 +97,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return Consumer<TrackerProvider>(
       builder: (context, trackerProvider, child) {
+        final theme = Theme.of(context);
+        final colorScheme = theme.colorScheme;
         final trackers = trackerProvider.trackers;
         final connectedCount = trackerProvider.connectedCount;
         final outOfRangeCount = trackerProvider.outOfRangeCount;
@@ -121,7 +123,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }).toList();
 
         return Scaffold(
-          backgroundColor: const Color(0xFFF8FAFC),
           body: SafeArea(
             bottom: false,
             child: Column(
@@ -138,7 +139,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       if (!mounted) return;
                       trackerProvider.refreshTrackers();
                     },
-                    color: const Color(0xFF2563EB),
+                    color: colorScheme.primary,
                     child: ListView(
                       physics: const AlwaysScrollableScrollPhysics(
                         parent: BouncingScrollPhysics(),
@@ -191,14 +192,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required int disconnectedCount,
     required int activeAlerts,
   }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.03),
             blurRadius: 20,
             offset: const Offset(0, 6),
           ),
@@ -211,10 +217,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Row(
               children: [
-                const Text(
+                Text(
                   'Overview',
-                  style: TextStyle(
-                    color: Color(0xFF0F172A),
+                  style: textTheme.titleMedium?.copyWith(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                   ),
@@ -309,10 +314,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     Color accentColor = const Color(0xFF1D4ED8),
     Color backgroundColor = const Color(0xFFEFF6FF),
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pillColor = isDark
+        ? accentColor.withValues(alpha: 0.16)
+        : backgroundColor;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: pillColor,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -339,6 +349,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required int outOfRangeCount,
     required int disconnectedCount,
   }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
     final filters = [
       (
         'All',
@@ -392,13 +406,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: colorScheme.primary.withValues(
+                          alpha: isDark ? 0.18 : 0.08,
+                        ),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         LucideIcons.search,
                         size: 16,
-                        color: Color(0xFF2563EB),
+                        color: colorScheme.primary,
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -406,10 +422,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Search & filters',
-                            style: TextStyle(
-                              color: Color(0xFF334155),
+                            style: textTheme.labelLarge?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -418,8 +433,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             compactSummary,
                             style: TextStyle(
                               color: hasActiveCriteria
-                                  ? const Color(0xFF2563EB)
-                                  : const Color(0xFF64748B),
+                                  ? colorScheme.primary
+                                  : textTheme.bodyMedium?.color,
                               fontSize: 12,
                               fontWeight: hasActiveCriteria
                                   ? FontWeight.w600
@@ -441,10 +456,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     AnimatedRotation(
                       turns: _filtersExpanded ? 0.5 : 0,
                       duration: const Duration(milliseconds: 200),
-                      child: const Icon(
+                      child: Icon(
                         LucideIcons.chevronDown,
                         size: 18,
-                        color: Color(0xFF64748B),
+                        color: theme.iconTheme.color,
                       ),
                     ),
                   ],
@@ -462,10 +477,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       onChanged: _updateSearchQuery,
                       decoration: InputDecoration(
                         hintText: 'Search by tracker name or device ID',
-                        prefixIcon: const Icon(
+                        prefixIcon: Icon(
                           LucideIcons.search,
                           size: 18,
-                          color: Color(0xFF64748B),
+                          color: theme.iconTheme.color,
                         ),
                         suffixIcon: _searchQuery.isEmpty
                             ? null
@@ -474,10 +489,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   _searchController.clear();
                                   _updateSearchQuery('');
                                 },
-                                icon: const Icon(
+                                icon: Icon(
                                   LucideIcons.x,
                                   size: 18,
-                                  color: Color(0xFF64748B),
+                                  color: theme.iconTheme.color,
                                 ),
                               ),
                         isDense: true,
@@ -528,12 +543,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required IconData icon,
     required Color color,
   }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
     final isSelected = _filter == value;
 
     return Material(
       color: isSelected
           ? color.withValues(alpha: 0.1)
-          : const Color(0xFFF8FAFC),
+          : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -545,7 +564,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             border: Border.all(
               color: isSelected
                   ? color.withValues(alpha: 0.55)
-                  : const Color(0xFFE2E8F0),
+                  : colorScheme.outlineVariant,
             ),
           ),
           child: Row(
@@ -556,7 +575,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 decoration: BoxDecoration(
                   color: isSelected
                       ? color.withValues(alpha: 0.16)
-                      : Colors.white,
+                      : theme.cardColor,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(icon, size: 15, color: color),
@@ -572,7 +591,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: const Color(0xFF334155),
+                        color: textTheme.bodyLarge?.color,
                         fontSize: 12,
                         fontWeight: isSelected
                             ? FontWeight.w700
@@ -583,7 +602,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Text(
                       '$count devices',
                       style: TextStyle(
-                        color: isSelected ? color : const Color(0xFF64748B),
+                        color: isSelected ? color : textTheme.bodyMedium?.color,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -599,21 +618,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildTrackersHeader(int filteredCount, bool isMobile) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
     final countLabel = '$filteredCount device${filteredCount == 1 ? "" : "s"}';
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFFFFFFF), Color(0xFFF8FBFF)],
+          colors: [
+            isDark ? const Color(0xFF172033) : const Color(0xFFFFFFFF),
+            isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FBFF),
+          ],
         ),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFDCE8F8)),
+        border: Border.all(color: colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF2563EB).withValues(alpha: 0.04),
+            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.04),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -629,22 +655,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Tracker library',
-                      style: TextStyle(
-                        color: Color(0xFF2563EB),
+                      style: textTheme.labelSmall?.copyWith(
+                        color: colorScheme.primary,
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.5,
                       ),
                     ),
                     const SizedBox(height: 6),
-                    const Text(
+                    Text(
                       'Registered Trackers',
-                      style: TextStyle(
+                      style: textTheme.headlineSmall?.copyWith(
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
                         letterSpacing: -0.2,
                       ),
                     ),
@@ -655,13 +680,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: colorScheme.primary.withValues(
+                          alpha: isDark ? 0.18 : 0.08,
+                        ),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
                         countLabel,
-                        style: const TextStyle(
-                          color: Color(0xFF1D4ED8),
+                        style: TextStyle(
+                          color: colorScheme.primary,
                           fontWeight: FontWeight.w700,
                           fontSize: 12,
                         ),
@@ -678,16 +705,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: colorScheme.outlineVariant),
             ),
             child: Row(
               children: [
-                const Text(
+                Text(
                   'Display mode',
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
+                  style: textTheme.labelSmall?.copyWith(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -703,13 +729,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildAddTrackerButton({required bool isCompact}) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return FilledButton.icon(
       onPressed: () => context.push('/pairing'),
       icon: const Icon(LucideIcons.plus, size: 16),
       label: Text(isCompact ? 'Add' : 'Add Tracker'),
       style: FilledButton.styleFrom(
-        backgroundColor: const Color(0xFF2563EB),
-        foregroundColor: Colors.white,
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
         minimumSize: const Size(0, 46),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -721,12 +749,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildViewToggle(bool isMobile) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       height: 44,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -757,6 +788,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required bool isLeading,
     required VoidCallback onTap,
   }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -770,14 +805,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           height: 44,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFFEFF6FF) : Colors.transparent,
+            color: isSelected
+                ? colorScheme.primary.withValues(alpha: 0.12)
+                : Colors.transparent,
             borderRadius: BorderRadius.horizontal(
               left: isLeading ? const Radius.circular(17) : Radius.zero,
               right: isLeading ? Radius.zero : const Radius.circular(17),
             ),
             border: Border(
               right: isLeading
-                  ? const BorderSide(color: Color(0xFFE2E8F0))
+                  ? BorderSide(color: colorScheme.outlineVariant)
                   : BorderSide.none,
             ),
           ),
@@ -789,16 +826,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon,
                 size: 16,
                 color: isSelected
-                    ? const Color(0xFF2563EB)
-                    : const Color(0xFF334155),
+                    ? colorScheme.primary
+                    : theme.iconTheme.color,
               ),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: TextStyle(
                   color: isSelected
-                      ? const Color(0xFF2563EB)
-                      : const Color(0xFF334155),
+                      ? colorScheme.primary
+                      : textTheme.bodyLarge?.color,
                   fontSize: 13,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
                   height: 1,
@@ -812,18 +849,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildTrackerCollection(List<Tracker> trackers) {
+    final theme = Theme.of(context);
+
     if (trackers.isEmpty) {
       return Card(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
           child: Column(
-            children: const [
-              Icon(LucideIcons.users, size: 42, color: Color(0xFFCBD5E1)),
+            children: [
+              Icon(
+                LucideIcons.users,
+                size: 42,
+                color: theme.colorScheme.outline,
+              ),
               SizedBox(height: 16),
               Text(
                 'No trackers match your filters',
                 style: TextStyle(
-                  color: Color(0xFF334155),
+                  color: theme.textTheme.bodyLarge?.color,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -831,7 +874,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Text(
                 'Try clearing the search field or switching to a different status.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Color(0xFF64748B), height: 1.4),
+                style: TextStyle(
+                  color: theme.textTheme.bodyMedium?.color,
+                  height: 1.4,
+                ),
               ),
             ],
           ),
@@ -870,22 +916,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildStatCard(String title, int count, IconData icon) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
+              color: colorScheme.primary.withValues(alpha: isDark ? 0.18 : 0.08),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: const Color(0xFF2563EB), size: 16),
+            child: Icon(icon, color: colorScheme.primary, size: 16),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -894,8 +945,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 AnimatedCounter(
                   count: count,
-                  style: const TextStyle(
-                    color: Color(0xFF0F172A),
+                  style: TextStyle(
+                    color: textTheme.bodyLarge?.color,
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
                     height: 1,
@@ -905,8 +956,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 4),
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
+                  style: TextStyle(
+                    color: textTheme.bodyMedium?.color,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1008,23 +1059,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required int totalPages,
     required int totalTrackers,
   }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     final start = (currentPage * _listPageSize) + 1;
     final end = ((currentPage + 1) * _listPageSize).clamp(0, totalTrackers);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
           Expanded(
             child: Text(
               'Showing $start-$end of $totalTrackers',
-              style: const TextStyle(
-                color: Color(0xFF64748B),
+              style: TextStyle(
+                color: textTheme.bodyMedium?.color,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
@@ -1039,8 +1093,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           Text(
             '${currentPage + 1}/$totalPages',
-            style: const TextStyle(
-              color: Color(0xFF334155),
+            style: TextStyle(
+              color: textTheme.bodyLarge?.color,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1057,6 +1111,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildGridCard(Tracker tracker) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     Color statusColor;
     String statusText;
     switch (tracker.status) {
@@ -1078,12 +1135,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
+        side: BorderSide(color: colorScheme.outlineVariant),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: () => context.push('/tracker/${tracker.id}'),
-        splashColor: const Color(0xFF2563EB).withValues(alpha: 0.1),
+        splashColor: colorScheme.primary.withValues(alpha: 0.1),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -1092,23 +1149,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
+                  color: colorScheme.primary.withValues(
+                    alpha: theme.brightness == Brightness.dark ? 0.18 : 0.08,
+                  ),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
+                child: Icon(
                   LucideIcons.radioReceiver,
                   size: 22,
-                  color: Color(0xFF2563EB),
+                  color: colorScheme.primary,
                 ),
               ),
               const SizedBox(height: 14),
               Expanded(
                 child: Text(
                   tracker.name,
-                  style: const TextStyle(
+                  style: textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                     fontSize: 15,
-                    color: Color(0xFF0F172A),
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -1150,7 +1208,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 10),
               Text(
                 tracker.deviceId,
-                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                style: TextStyle(
+                  color: textTheme.bodyMedium?.color,
+                  fontSize: 12,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),

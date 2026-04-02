@@ -19,6 +19,7 @@ class _PairingScreenState extends State<PairingScreen> {
     super.initState();
     // Start BLE scanning when screen loads
     Future.delayed(Duration.zero, () {
+      if (!mounted) return;
       context.read<TrackerProvider>().scanForTrackers();
     });
   }
@@ -42,19 +43,21 @@ class _PairingScreenState extends State<PairingScreen> {
   Widget build(BuildContext context) {
     return Consumer<TrackerProvider>(
       builder: (context, provider, child) {
+        final theme = Theme.of(context);
         final pendingTrackers = provider.pendingTrackers;
         final isScanning = provider.isScanning;
 
         return Scaffold(
-          backgroundColor: const Color(0xFFF8FAFC),
           appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 0,
-            title: const Text('Add Tracker', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w600)),
-            iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
+            title: const Text('Add Tracker'),
             actions: [
               IconButton(
-                icon: Icon(LucideIcons.refreshCw, color: isScanning ? const Color(0xFF94A3B8) : const Color(0xFF0F172A)),
+                icon: Icon(
+                  LucideIcons.refreshCw,
+                  color: isScanning
+                      ? theme.iconTheme.color?.withValues(alpha: 0.45)
+                      : theme.iconTheme.color,
+                ),
                 onPressed: isScanning ? null : () {
                   provider.scanForTrackers();
                 },
@@ -73,6 +76,8 @@ class _PairingScreenState extends State<PairingScreen> {
   }
 
   Widget _buildScanningState() {
+    final theme = Theme.of(context);
+
     return Column(
       children: [
         // Header
@@ -81,20 +86,27 @@ class _PairingScreenState extends State<PairingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Scanning for Devices...', 
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+              Text(
+                'Scanning for Devices...',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const SizedBox(height: 8),
-              const Text('Looking for ESP32 trackers nearby', 
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+              Text(
+                'Looking for ESP32 trackers nearby',
+                style: theme.textTheme.bodySmall?.copyWith(fontSize: 13),
+              ),
               const SizedBox(height: 12),
               // Progress bar
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                   minHeight: 4,
-                  backgroundColor: const Color(0xFFE2E8F0),
+                  backgroundColor: theme.colorScheme.outlineVariant,
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    Colors.blue.shade400,
+                    theme.colorScheme.primary,
                   ),
                 ),
               ),
@@ -117,15 +129,30 @@ class _PairingScreenState extends State<PairingScreen> {
   }
 
   Widget _buildEmptyState(BuildContext context, TrackerProvider provider) {
+    final theme = Theme.of(context);
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(LucideIcons.radioReceiver, size: 64, color: Color(0xFFCBD5E1)),
+          Icon(
+            LucideIcons.radioReceiver,
+            size: 64,
+            color: theme.colorScheme.outline,
+          ),
           const SizedBox(height: 24),
-          const Text('No trackers found', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+          Text(
+            'No trackers found',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 8),
-          const Text('Make sure ESP32 trackers are powered on.', style: TextStyle(color: Color(0xFF64748B))),
+          Text(
+            'Make sure ESP32 trackers are powered on.',
+            style: theme.textTheme.bodyMedium,
+          ),
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: () => provider.scanForTrackers(),
@@ -137,13 +164,21 @@ class _PairingScreenState extends State<PairingScreen> {
   }
 
   Widget _buildListState(List<PendingTracker> trackers) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.all(20),
-          child: Text('${trackers.length} Device${trackers.length != 1 ? 's' : ''} Found', 
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+          child: Text(
+            '${trackers.length} Device${trackers.length != 1 ? 's' : ''} Found',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
         Expanded(
           child: trackers.isEmpty
@@ -151,15 +186,21 @@ class _PairingScreenState extends State<PairingScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(LucideIcons.info, size: 48, color: const Color(0xFFCBD5E1)),
+                      Icon(
+                        LucideIcons.info,
+                        size: 48,
+                        color: theme.colorScheme.outline,
+                      ),
                       const SizedBox(height: 16),
-                      const Text('No devices found', 
-                        style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
+                      Text(
+                        'No devices found',
+                        style: theme.textTheme.bodyMedium?.copyWith(fontSize: 14),
+                      ),
                       const SizedBox(height: 8),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 24),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: Text('Make sure Bluetooth and location permissions are enabled.',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                          style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
                           textAlign: TextAlign.center),
                       ),
                     ],
@@ -193,15 +234,21 @@ class _PairingScreenState extends State<PairingScreen> {
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12), 
-                        side: const BorderSide(color: Color(0xFFE2E8F0))
+                        side: BorderSide(color: colorScheme.outlineVariant)
                       ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                        leading: const Icon(LucideIcons.radio, color: Color(0xFF2563EB), size: 28),
+                        leading: Icon(
+                          LucideIcons.radio,
+                          color: colorScheme.primary,
+                          size: 28,
+                        ),
                         title: Text('ESP32 Tracker', 
-                          style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          )),
                         subtitle: Text('Serial: $serialNumber$distance',
-                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+                          style: theme.textTheme.bodySmall?.copyWith(fontSize: 12)),
                         trailing: ElevatedButton(
                           onPressed: () => _startPairing(tracker),
                           style: ElevatedButton.styleFrom(
@@ -262,16 +309,20 @@ class _PairingDialogState extends State<_PairingDialog> {
         ),
       );
     }
-    
+
+    if (!mounted) return;
+
     // Close the dialog
     context.pop();
-    
+
     // Return to dashboard (pop the pairing screen)
     context.pop();
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       contentPadding: const EdgeInsets.all(32),
@@ -281,24 +332,27 @@ class _PairingDialogState extends State<_PairingDialog> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.green.shade50, 
+              color: Colors.green.shade600.withValues(alpha: 0.12),
               shape: BoxShape.circle
             ),
             child: Icon(Icons.check_circle, color: Colors.green.shade600, size: 32),
           ),
           const SizedBox(height: 20),
-          const Text('Device Detected!', 
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+          Text(
+            'Device Detected!',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 8),
           Text('Serial: ${widget.tracker.serialNumber ?? "Unknown"}',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+            style: theme.textTheme.bodySmall?.copyWith(fontSize: 12)),
           const SizedBox(height: 20),
           TextField(
             controller: _nameController,
             decoration: InputDecoration(
               labelText: 'Device Name',
-              filled: true,
-              fillColor: const Color(0xFFF1F5F9),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8), 
                 borderSide: BorderSide.none

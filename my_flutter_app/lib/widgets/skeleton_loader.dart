@@ -67,6 +67,8 @@ class ShimmerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return AnimatedBuilder(
       animation: animationController,
       builder: (context, _) {
@@ -75,10 +77,10 @@ class ShimmerWidget extends StatelessWidget {
             return LinearGradient(
               begin: Alignment(-1.5 - (animationController.value * 3), 0),
               end: Alignment(1.0, 0),
-              colors: const [
-                Color(0xFFE2E8F0), // Slate 200
-                Color(0xFFF1F5F9), // Slate 100
-                Color(0xFFE2E8F0), // Slate 200
+              colors: [
+                isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                isDark ? const Color(0xFF475569) : const Color(0xFFF1F5F9),
+                isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
               ],
               stops: const [0.0, 0.5, 1.0],
             ).createShader(bounds);
@@ -102,13 +104,15 @@ class SkeletonTrackerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Padding(
       padding: padding,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.cardColor,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
         ),
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -157,13 +161,15 @@ class SkeletonStatsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Padding(
       padding: padding,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.cardColor,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
         ),
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -199,11 +205,13 @@ class _SkeletonBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9), // Slate 100
+        color: isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(6),
       ),
     );
