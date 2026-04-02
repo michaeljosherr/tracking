@@ -15,8 +15,6 @@ class TrackerProvider with ChangeNotifier {
 
   bool _isScanning = false;
   bool _isBackgroundScanning = false;
-  bool _isScanInProgress = false;  // Prevent concurrent scans
-  Timer? _backgroundScanTimer;
   final Set<String> _pingingDevices = {};  // Track devices currently being pinged
 
   static const String _trackersStorageKey = 'registered_trackers';
@@ -158,8 +156,9 @@ class TrackerProvider with ChangeNotifier {
   // ============================================================================
 
   /// Start continuous background scanning for registered trackers
-  /// Scans for 1 second every second, updates tracker RSSI and distance in real-time
-  void startBackgroundScanning() {
+  /// Uses continuous BLE scanning like the Python app (always scanning, lives updates)
+  /// No gaps between scans - detection happens in real-time as devices advertise
+  Future<void> startBackgroundScanning() async {
     if (_isBackgroundScanning || _trackers.isEmpty) {
       if (_trackers.isEmpty) {
         print('[TrackerProvider] Cannot start background scanning: no registered trackers');
@@ -168,70 +167,39 @@ class TrackerProvider with ChangeNotifier {
     }
 
     _isBackgroundScanning = true;
-    print('[TrackerProvider] ✓ Starting background scanning for ${_trackers.length} registered tracker(s)');
+    print('[TrackerProvider] ✓ Starting continuous background scanning for ${_trackers.length} registered tracker(s)');
     print('[TrackerProvider] Registered trackers: ${_trackers.map((t) => t.serialNumber).join(', ')}');
 
-    // Scan every 2 seconds with 1 second scan duration to avoid overlapping scans
-    // This gives 1 second buffer between scans for results processing
-    _backgroundScanTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
-      // Skip this cycle if a scan is already in progress
-      if (_isScanInProgress) {
-        print('[TrackerProvider] Scan already in progress, skipping this cycle');
-        return;
-      }
-
-      _isScanInProgress = true;
-      try {
-        print('[TrackerProvider] Starting background scan cycle...');
-        final scannedTrackers = await _ble.scanForTrackers(
-          scanDuration: const Duration(seconds: 1),
-        );
-
-        // Update registered trackers with scan results
-        _updateTrackersFromScan(scannedTrackers);
-      } catch (e) {
-        print('[TrackerProvider] Background scan error: $e');
-      } finally {
-        _isScanInProgress = false;
-      }
-    });
-
-    notifyListeners();
-  }
-
-  /// Stop continuous background scanning
-  void stopBackgroundScanning() {
-    _backgroundScanTimer?.cancel();
-    _backgroundScanTimer = null;
-    _isBackgroundScanning = false;
-    _isScanInProgress = false;
-    print('[TrackerProvider] ✓ Stopped background scanning');
-    notifyListeners();
-  }
-
-  /// Update registered trackers with new scan data
-  void _updateTrackersFromScan(List<PendingTracker> scannedTrackers) {
-    if (scannedTrackers.isEmpty) {
-      print('[TrackerProvider] No devices scanned this cycle');
-      return;
+    try {
+      // Start continuous scanning with live callbacks
+      // This matches the Python app behavior: scanner runs continuously
+      await _ble.startContinuousScanning(
+        onTrackerUpdate: _onContinuousScanUpdate,
+      );
+    } catch (e) {
+      print('[TrackerProvider] Error starting continuous scan: $e');
+      _isBackgroundScanning = false;
+      notifyListeners();
     }
+  }
 
-    print('[TrackerProvider] Scanned ${scannedTrackers.length} device(s), checking against ${_trackers.length} registered tracker(s)');
+  /// Handle continuous scan updates from BLE service
+  /// Called whenever devices are detected during continuous scanning
+  void _onContinuousScanUpdate(List<PendingTracker> scannedTrackers) {
+    if (scannedTrackers.isEmpty) return;
+
     var updated = false;
 
     for (final scanned in scannedTrackers) {
-      print('[TrackerProvider]   Checking scanned device: ${scanned.serialNumber}, RSSI: ${scanned.rssi}, Distance: ${scanned.distance?.toStringAsFixed(2)}m');
-      
-      // Find matching registered tracker
+      // Find matching registered tracker by serial number
       final index = _trackers.indexWhere(
         (t) => t.serialNumber == scanned.serialNumber,
       );
 
       if (index != -1) {
         final tracker = _trackers[index];
-        print('[TrackerProvider]   ✓ Found match for ${scanned.serialNumber}, updating tracker "${tracker.name}"');
 
-        // Update RSSI and distance
+        // Update RSSI and distance in real-time
         final updatedTracker = tracker.copyWith(
           rssi: scanned.rssi,
           rssiFiltered: scanned.rssiFiltered,
@@ -242,20 +210,32 @@ class TrackerProvider with ChangeNotifier {
         );
 
         _trackers[index] = updatedTracker;
-        print('[TrackerProvider]   Updated: ${tracker.name} → Distance: ${updatedTracker.distance?.toStringAsFixed(2)}m, Signal: ${updatedTracker.signalStrength}%');
         updated = true;
-      } else {
-        print('[TrackerProvider]   ✗ No registered tracker found for ${scanned.serialNumber}');
       }
     }
 
     if (updated) {
-      print('[TrackerProvider] ✓ Notifying listeners of ${_trackers.length} tracker updates');
       notifyListeners();
-    } else {
-      print('[TrackerProvider] No trackers were updated this scan cycle');
     }
   }
+
+  /// Stop continuous background scanning
+  Future<void> stopBackgroundScanning() async {
+    if (!_isBackgroundScanning) return;
+
+    _isBackgroundScanning = false;
+
+    try {
+      await _ble.stopContinuousScanning();
+      print('[TrackerProvider] ✓ Stopped background scanning');
+    } catch (e) {
+      print('[TrackerProvider] Error stopping background scan: $e');
+    }
+
+    notifyListeners();
+  }
+
+
 
   // ============================================================================
   // Ping Feature

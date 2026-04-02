@@ -95,6 +95,10 @@ class BleService {
 
   // Active tracker data during scanning
   final Map<String, TrackerData> _activeTrackers = {};
+  
+  // Continuous scanning state
+  bool _isContinuousScanRunning = false;
+  Function(List<PendingTracker>)? _continuousScanCallback;
 
   factory BleService() {
     return _instance;
@@ -316,6 +320,130 @@ class BleService {
       print('[BleService] Error stopping scan: $e');
     }
   }
+
+  /// Start continuous background scanning with live updates (like the Python app)
+  /// Scans continuously, calling the callback for each discovery with updated trackers
+  /// This matches the Python behavior: continuous scanning with live callbacks
+  Future<void> startContinuousScanning({
+    required Function(List<PendingTracker>) onTrackerUpdate,
+  }) async {
+    if (_isContinuousScanRunning) {
+      print('[BleService] Continuous scanning already running');
+      return;
+    }
+
+    try {
+      // Check Bluetooth availability
+      if (!await isBluetoothAvailable()) {
+        print('[BleService] Bluetooth not available');
+        return;
+      }
+
+      if (!await isBluetoothOn()) {
+        print('[BleService] Bluetooth is off');
+        return;
+      }
+
+      _isContinuousScanRunning = true;
+      _continuousScanCallback = onTrackerUpdate;
+
+      print('[BleService] ✓ Starting continuous BLE scanning...');
+      
+      // Listen to scan results continuously
+      FlutterBluePlus.onScanResults.listen(
+        (scanResults) {
+          if (!_isContinuousScanRunning) return;
+
+          final result = <PendingTracker>[];
+
+          for (final scanResult in scanResults) {
+            final device = scanResult.device;
+            final name = device.advName.isNotEmpty ? device.advName : device.name;
+            final rssi = scanResult.rssi;
+            final address = device.remoteId.toString();
+
+            // Parse device name for ESP32 trackers
+            final parsed = parseDeviceName(name);
+            if (parsed == null) continue;
+
+            final (deviceId: deviceId, serialNumber: serialNumber) = parsed;
+
+            // Filter by RSSI threshold
+            if (rssi < _rssiThreshold) continue;
+
+            // Update or create tracker data with Kalman filtering
+            final trackerData = _activeTrackers.putIfAbsent(
+              serialNumber,
+              () => TrackerData(
+                deviceId: deviceId,
+                serialNumber: serialNumber,
+                bleAddress: address,
+                initialRssi: rssi,
+                initialDistance: calculateDistanceWithConfig(rssi),
+              ),
+            );
+
+            // Update with new measurement
+            trackerData.updateRssi(rssi);
+            trackerData.updateDistance(calculateDistanceWithConfig(rssi));
+
+            final signalStrength = (100 + trackerData.rssiFiltered).clamp(0.0, 100.0).toInt();
+
+            result.add(
+              PendingTracker(
+                deviceId: deviceId,
+                signalStrength: signalStrength,
+                discovered: DateTime.now(),
+                serialNumber: serialNumber,
+                bleAddress: address,
+                rssi: rssi,
+                rssiFiltered: trackerData.rssiFiltered,
+                distance: trackerData.distance,
+                rssiHistory: List.from(trackerData.rssiHistory),
+              ),
+            );
+          }
+
+          // Call callback with updated trackers (even if empty - signals presence)
+          if (result.isNotEmpty) {
+            _continuousScanCallback?.call(result);
+          }
+        },
+        onError: (e) {
+          print('[BleService] Scan stream error: $e');
+        },
+      );
+
+      // Start scanning with continuous updates (no timeout - runs indefinitely)
+      await FlutterBluePlus.startScan(
+        timeout: null, // No timeout - continuous scanning
+        continuousUpdates: true,
+      );
+
+      print('[BleService] Continuous scan initialized');
+    } catch (e) {
+      print('[BleService] Error starting continuous scan: $e');
+      _isContinuousScanRunning = false;
+    }
+  }
+
+  /// Stop continuous scanning
+  Future<void> stopContinuousScanning() async {
+    if (!_isContinuousScanRunning) return;
+
+    try {
+      await FlutterBluePlus.stopScan();
+      _isContinuousScanRunning = false;
+      _continuousScanCallback = null;
+      print('[BleService] ✓ Continuous scanning stopped');
+    } catch (e) {
+      print('[BleService] Error stopping continuous scan: $e');
+      _isContinuousScanRunning = false;
+    }
+  }
+
+  /// Check if continuous scanning is running
+  bool get isContinuousScanRunning => _isContinuousScanRunning;
 
   /// Check if Bluetooth is available on the device
   Future<bool> isBluetoothAvailable() async {
