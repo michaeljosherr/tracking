@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:my_flutter_app/core/ble_service.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:uuid/uuid.dart';
@@ -13,6 +14,7 @@ class TrackerProvider with ChangeNotifier {
   bool _isScanning = false;
   bool _isBackgroundScanning = false;
   Timer? _backgroundScanTimer;
+  final Set<String> _pingingDevices = {};  // Track devices currently being pinged
 
   List<Tracker> get trackers => _trackers;
   List<Alert> get alerts => _alerts;
@@ -178,12 +180,23 @@ class TrackerProvider with ChangeNotifier {
   // ============================================================================
 
   /// Ping a tracker device via BLE GATT
+  /// Returns true if ping succeeded, false otherwise
+  /// Prevents multiple simultaneous pings to the same device
   Future<bool> pingTracker(String trackerId) async {
     final tracker = getTracker(trackerId);
     if (tracker == null || tracker.bleAddress == null) {
       print('[TrackerProvider] Cannot ping: tracker not found or no BLE address');
       return false;
     }
+
+    // Prevent multiple simultaneous pings to the same device
+    if (_pingingDevices.contains(trackerId)) {
+      print('[TrackerProvider] Already pinging ${tracker.name}, please wait...');
+      return false;
+    }
+
+    // Mark device as currently pinging
+    _pingingDevices.add(trackerId);
 
     try {
       print('[TrackerProvider] Pinging tracker: ${tracker.name}');
@@ -193,14 +206,31 @@ class TrackerProvider with ChangeNotifier {
         print('[TrackerProvider] ✓ Ping successful for ${tracker.name}');
       } else {
         print('[TrackerProvider] ✗ Ping failed for ${tracker.name}');
+        return false;
       }
 
-      return success;
+      // Wait for device GATT state to fully reset + safety margin
+      // Device disables GATT for ~3 seconds after ping, wait 4.2s to ensure full recovery
+      print('[TrackerProvider] Waiting for device GATT recovery (4.2s)...');
+      await Future.delayed(const Duration(milliseconds: 4200));
+
+      return true;
     } catch (e) {
       print('[TrackerProvider] Ping error: $e');
       return false;
+    } finally {
+      // Remove device from pinging set
+      _pingingDevices.remove(trackerId);
+      print('[TrackerProvider] Ping operation complete for ${tracker.name}');
     }
   }
+
+  // ============================================================================
+  // Tracker Management Methods
+  // ============================================================================
+
+  /// Rename a registered tracker device
+  void renameTracker(String id, String newName) {
     final index = _trackers.indexWhere((t) => t.id == id);
     if (index != -1) {
       _trackers[index] = _trackers[index].copyWith(name: newName);

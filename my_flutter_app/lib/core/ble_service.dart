@@ -350,7 +350,8 @@ class BleService {
   }
 
   /// Ping a registered device via BLE GATT
-  /// Sends a ping command to the device and waits for GATT state reset (4.2 seconds)
+  /// Sends a ping command to the device
+  /// Note: Device disables GATT for ~3 seconds after ping, caller should wait 4.2s before retry
   Future<bool> pingDevice(String deviceAddress) async {
     try {
       print('[BleService] Starting ping for device: $deviceAddress');
@@ -391,13 +392,9 @@ class BleService {
       // Write ping command (0x01 byte) to trigger device reset
       print('[BleService] Writing ping command (0x01)...');
       await pingChar.write([0x01], withoutResponse: false);
-      print('[BleService] Ping command sent, waiting for device GATT reset...');
+      print('[BleService] Ping command sent successfully');
 
-      // Wait 4.2 seconds for device GATT recovery
-      // Device disables GATT for ~3 seconds, plus buffer for safety
-      await Future.delayed(const Duration(milliseconds: 4200));
-
-      // Disconnect gracefully
+      // Disconnect immediately after ping
       print('[BleService] Disconnecting after ping...');
       await targetDevice.disconnect();
       print('[BleService] Ping completed successfully');
