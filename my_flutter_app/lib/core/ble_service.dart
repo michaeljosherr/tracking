@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:async';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:my_flutter_app/core/kalman_filter.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
@@ -99,6 +100,8 @@ class BleService {
   // Continuous scanning state
   bool _isContinuousScanRunning = false;
   Function(List<PendingTracker>)? _continuousScanCallback;
+  Timer? _continuousScanTimer;
+  StreamSubscription? _scanSubscription;
 
   factory BleService() {
     return _instance;
@@ -322,8 +325,8 @@ class BleService {
   }
 
   /// Start continuous background scanning with live updates (like the Python app)
-  /// Scans continuously, calling the callback for each discovery with updated trackers
-  /// This matches the Python behavior: continuous scanning with live callbacks
+  /// Scans in 1-second cycles continuously, mimicking Python's behavior
+  /// Each cycle: start scan → get live callbacks → stop → restart
   Future<void> startContinuousScanning({
     required Function(List<PendingTracker>) onTrackerUpdate,
   }) async {
@@ -347,10 +350,10 @@ class BleService {
       _isContinuousScanRunning = true;
       _continuousScanCallback = onTrackerUpdate;
 
-      print('[BleService] ✓ Starting continuous BLE scanning...');
+      print('[BleService] ✓ Starting continuous BLE scanning (1s cycles)...');
       
-      // Listen to scan results continuously
-      FlutterBluePlus.onScanResults.listen(
+      // Set up listener for scan results BEFORE starting scan
+      _scanSubscription = FlutterBluePlus.onScanResults.listen(
         (scanResults) {
           if (!_isContinuousScanRunning) return;
 
@@ -368,8 +371,13 @@ class BleService {
 
             final (deviceId: deviceId, serialNumber: serialNumber) = parsed;
 
+            print('[BleService] Detected: $serialNumber, RSSI: $rssi');
+
             // Filter by RSSI threshold
-            if (rssi < _rssiThreshold) continue;
+            if (rssi < _rssiThreshold) {
+              print('[BleService] RSSI $rssi below threshold, skipping');
+              continue;
+            }
 
             // Update or create tracker data with Kalman filtering
             final trackerData = _activeTrackers.putIfAbsent(
@@ -389,6 +397,8 @@ class BleService {
 
             final signalStrength = (100 + trackerData.rssiFiltered).clamp(0.0, 100.0).toInt();
 
+            print('[BleService] Updated $serialNumber: Filtered RSSI=${trackerData.rssiFiltered.toStringAsFixed(1)}, Distance=${trackerData.distance.toStringAsFixed(2)}m');
+
             result.add(
               PendingTracker(
                 deviceId: deviceId,
@@ -404,8 +414,9 @@ class BleService {
             );
           }
 
-          // Call callback with updated trackers (even if empty - signals presence)
+          // Call callback with updated trackers
           if (result.isNotEmpty) {
+            print('[BleService] Calling update callback with ${result.length} trackers');
             _continuousScanCallback?.call(result);
           }
         },
@@ -414,16 +425,32 @@ class BleService {
         },
       );
 
-      // Start scanning with continuous updates (no timeout - runs indefinitely)
-      await FlutterBluePlus.startScan(
-        timeout: null, // No timeout - continuous scanning
-        continuousUpdates: true,
-      );
+      // Start initial scan
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 1));
+      
+      // Restart scan every 1.1 seconds (scan duration + small overlap for processing)
+      // This mimics Python's continuous scanning pattern
+      _continuousScanTimer = Timer.periodic(const Duration(milliseconds: 1100), (timer) async {
+        if (!_isContinuousScanRunning) {
+          timer.cancel();
+          return;
+        }
 
-      print('[BleService] Continuous scan initialized');
+        try {
+          await FlutterBluePlus.stopScan();
+          await Future.delayed(const Duration(milliseconds: 50)); // Brief pause before restart
+          await FlutterBluePlus.startScan(timeout: const Duration(seconds: 1));
+          print('[BleService] Restarted continuous scan cycle');
+        } catch (e) {
+          print('[BleService] Error restarting scan: $e');
+        }
+      });
+
+      print('[BleService] Continuous scanning initialized with 1.1s cycle');
     } catch (e) {
       print('[BleService] Error starting continuous scan: $e');
       _isContinuousScanRunning = false;
+      _continuousScanCallback = null;
     }
   }
 
@@ -432,9 +459,18 @@ class BleService {
     if (!_isContinuousScanRunning) return;
 
     try {
+      _continuousScanTimer?.cancel();
+      _continuousScanTimer = null;
+      
+      await _scanSubscription?.cancel();
+      _scanSubscription = null;
+      
       await FlutterBluePlus.stopScan();
+      
       _isContinuousScanRunning = false;
       _continuousScanCallback = null;
+      _activeTrackers.clear();
+      
       print('[BleService] ✓ Continuous scanning stopped');
     } catch (e) {
       print('[BleService] Error stopping continuous scan: $e');

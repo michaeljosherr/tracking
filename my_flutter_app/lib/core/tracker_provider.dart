@@ -186,11 +186,18 @@ class TrackerProvider with ChangeNotifier {
   /// Handle continuous scan updates from BLE service
   /// Called whenever devices are detected during continuous scanning
   void _onContinuousScanUpdate(List<PendingTracker> scannedTrackers) {
-    if (scannedTrackers.isEmpty) return;
+    if (scannedTrackers.isEmpty) {
+      print('[TrackerProvider] Scan callback received with 0 trackers');
+      return;
+    }
 
+    print('[TrackerProvider] Scan callback: got ${scannedTrackers.length} tracker(s)');
     var updated = false;
 
     for (final scanned in scannedTrackers) {
+      final distanceStr = scanned.distance != null ? scanned.distance!.toStringAsFixed(2) : 'null';
+      print('[TrackerProvider] Processing scanned: ${scanned.serialNumber}, RSSI: ${scanned.rssi}, Filtered: ${scanned.rssiFiltered.toStringAsFixed(1)}, Distance: ${distanceStr}m');
+      
       // Find matching registered tracker by serial number
       final index = _trackers.indexWhere(
         (t) => t.serialNumber == scanned.serialNumber,
@@ -198,6 +205,7 @@ class TrackerProvider with ChangeNotifier {
 
       if (index != -1) {
         final tracker = _trackers[index];
+        print('[TrackerProvider]   ✓ Found registered tracker: "${tracker.name}"');
 
         // Update RSSI and distance in real-time
         final updatedTracker = tracker.copyWith(
@@ -210,11 +218,17 @@ class TrackerProvider with ChangeNotifier {
         );
 
         _trackers[index] = updatedTracker;
+        final oldDistanceStr = tracker.distance != null ? tracker.distance!.toStringAsFixed(2) : 'null';
+        final newDistanceStr = updatedTracker.distance != null ? updatedTracker.distance!.toStringAsFixed(2) : 'null';
+        print('[TrackerProvider]   Updated "${tracker.name}": Distance ${oldDistanceStr}m → ${newDistanceStr}m');
         updated = true;
+      } else {
+        print('[TrackerProvider]   ✗ No registered tracker found for ${scanned.serialNumber}');
       }
     }
 
     if (updated) {
+      print('[TrackerProvider] Notifying listeners');
       notifyListeners();
     }
   }
