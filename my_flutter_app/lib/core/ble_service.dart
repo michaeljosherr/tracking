@@ -357,6 +357,8 @@ class BleService {
         (scanResults) {
           if (!_isContinuousScanRunning) return;
 
+          print('[BleService] Scan results callback received with ${scanResults.length} results');
+
           final result = <PendingTracker>[];
 
           for (final scanResult in scanResults) {
