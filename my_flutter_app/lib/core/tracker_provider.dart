@@ -107,7 +107,7 @@ class TrackerProvider with ChangeNotifier {
   // ============================================================================
 
   /// Start continuous background scanning for registered trackers
-  /// Updates tracker RSSI and distance every second
+  /// Scans for 1 second every second, updates tracker RSSI and distance in real-time
   void startBackgroundScanning() {
     if (_isBackgroundScanning || _trackers.isEmpty) {
       return;
@@ -117,10 +117,11 @@ class TrackerProvider with ChangeNotifier {
     print('[TrackerProvider] ✓ Starting background scanning for ${_trackers.length} trackers');
 
     // Scan every 1 second and update registered trackers
+    // Using 1 second scan duration for reliable device detection
     _backgroundScanTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       try {
         final scannedTrackers = await _ble.scanForTrackers(
-          scanDuration: const Duration(milliseconds: 500),
+          scanDuration: const Duration(seconds: 1),
         );
 
         // Update registered trackers with scan results
