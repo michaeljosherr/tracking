@@ -68,168 +68,138 @@ class _AppTopBarState extends State<AppTopBar> {
               constraints: const BoxConstraints(maxWidth: 1040),
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        isDark ? const Color(0xFF172033) : const Color(0xFFFFFFFF),
-                        isDark ? const Color(0xFF0F172A) : const Color(0xFFF7FAFF),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: colorScheme.outlineVariant),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
-                        blurRadius: 24,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: widget.subtitle != null ? 42 : 28,
-                              margin: const EdgeInsets.only(top: 4, right: 14),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Color(0xFF60A5FA),
-                                    Color(0xFF2563EB),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(999),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(
-                                      0xFF2563EB,
-                                    ).withValues(alpha: 0.12),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Tracker workspace',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: textTheme.labelSmall?.copyWith(
-                                      color: colorScheme.primary,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.35,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    widget.title,
-                                    style: textTheme.headlineSmall?.copyWith(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.05,
-                                      letterSpacing: -0.3,
-                                    ),
-                                  ),
-                                  if (widget.subtitle != null) ...[
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      widget.subtitle!,
-                                      style: textTheme.bodySmall?.copyWith(
-                                        fontSize: 12.5,
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
+                child: LayoutBuilder(
+                  builder: (context, outerConstraints) {
+                    final compactHeader = outerConstraints.maxWidth < 380;
+                    final titleFontSize = compactHeader ? 18.0 : 20.0;
+                    final subtitleFontSize = compactHeader ? 11.5 : 12.0;
+                    final containerPadding = compactHeader
+                        ? const EdgeInsets.fromLTRB(16, 14, 16, 14)
+                        : const EdgeInsets.fromLTRB(18, 16, 18, 16);
+
+                    return Container(
+                      padding: containerPadding,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            isDark ? const Color(0xFF172033) : const Color(0xFFFFFFFF),
+                            isDark ? const Color(0xFF0F172A) : const Color(0xFFF7FAFF),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildAlertsMenuButton(
-                            recentAlerts: menuAlerts,
-                            badgeCount: unreadAlerts.length,
-                          ),
-                          const SizedBox(width: 8),
-                          _buildActionButton(
-                            key: const ValueKey('profile-topbar-button'),
-                            icon: LucideIcons.settings,
-                            onTap: () => context.push('/settings'),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: colorScheme.outlineVariant),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                            blurRadius: 24,
+                            offset: const Offset(0, 10),
                           ),
                         ],
                       ),
-                    ],
+                      child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final titleBlock = Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: widget.subtitle != null ? 42 : 28,
+                            margin: const EdgeInsets.only(top: 4, right: 14),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Color(0xFF60A5FA),
+                                  Color(0xFF2563EB),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(
+                                    0xFF2563EB,
+                                  ).withValues(alpha: 0.12),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Tracker workspace',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.primary,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.35,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  widget.title,
+                                  style: textTheme.headlineSmall?.copyWith(
+                                    fontSize: titleFontSize,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.05,
+                                    letterSpacing: -0.3,
+                                  ),
+                                ),
+                                if (widget.subtitle != null) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    widget.subtitle!,
+                                    style: textTheme.bodySmall?.copyWith(
+                                      fontSize: subtitleFontSize,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+
+                      final actions = _buildAlertsMenuButton(
+                        recentAlerts: menuAlerts,
+                        badgeCount: unreadAlerts.length,
+                        compact: compactHeader,
+                      );
+
+                      if (compactHeader) {
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: titleBlock),
+                            const SizedBox(width: 10),
+                            actions,
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: titleBlock),
+                          const SizedBox(width: 12),
+                          actions,
+                        ],
+                      );
+                    },
                   ),
+                    );
+                  },
                 ),
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    Key? key,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            isDark ? const Color(0xFF1E293B) : const Color(0xFFFFFFFF),
-            isDark ? const Color(0xFF172033) : const Color(0xFFF4F8FF),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colorScheme.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        key: key,
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
-          child: SizedBox(
-            width: 44,
-            height: 44,
-            child: Center(
-              child: Icon(icon, color: colorScheme.primary, size: 18),
             ),
           ),
         ),
@@ -240,10 +210,13 @@ class _AppTopBarState extends State<AppTopBar> {
   Widget _buildAlertsMenuButton({
     required List<Alert> recentAlerts,
     required int badgeCount,
+    bool compact = false,
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final buttonSize = compact ? 40.0 : 44.0;
+    final radius = compact ? 16.0 : 18.0;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -253,7 +226,7 @@ class _AppTopBarState extends State<AppTopBar> {
             color: badgeCount > 0
                 ? colorScheme.primary.withValues(alpha: isDark ? 0.18 : 0.08)
                 : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(radius),
             border: Border.all(
               color: badgeCount > 0
                   ? colorScheme.primary.withValues(alpha: isDark ? 0.3 : 0.18)
@@ -270,13 +243,13 @@ class _AppTopBarState extends State<AppTopBar> {
           child: Material(
             key: _alertsMenuAnchorKey,
             color: Colors.transparent,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(radius),
             child: InkWell(
               onTap: () => _showAlertsMenu(recentAlerts, badgeCount),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(radius),
               child: SizedBox(
-                width: 44,
-                height: 44,
+                width: buttonSize,
+                height: buttonSize,
                 child: Center(
                   child: Icon(
                     LucideIcons.bell,
@@ -325,9 +298,11 @@ class _AppTopBarState extends State<AppTopBar> {
     final button = anchorContext.findRenderObject() as RenderBox;
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
 
-    const menuWidth = 296.0;
     const screenPadding = 12.0;
     final buttonTopLeft = button.localToGlobal(Offset.zero, ancestor: overlay);
+    final menuWidth = (overlay.size.width - (screenPadding * 2))
+        .clamp(220.0, 296.0)
+        .toDouble();
     final left = (buttonTopLeft.dx + button.size.width - menuWidth)
         .clamp(screenPadding, overlay.size.width - menuWidth - screenPadding)
         .toDouble();
@@ -617,7 +592,7 @@ class _AlertMenuTile extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Container(
-          width: 268,
+          width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,

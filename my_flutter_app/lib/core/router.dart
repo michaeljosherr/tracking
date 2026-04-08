@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:my_flutter_app/core/app_preferences_provider.dart';
 import 'package:my_flutter_app/screens/alerts_screen.dart';
 import 'package:my_flutter_app/screens/dashboard_screen.dart';
-import 'package:my_flutter_app/screens/profile_screen.dart';
 import 'package:my_flutter_app/screens/settings_screen.dart';
 import 'package:my_flutter_app/screens/onboarding_screen.dart';
 import 'package:my_flutter_app/screens/pairing_screen.dart';
@@ -57,17 +56,17 @@ GoRouter createRouter(AppPreferencesProvider preferencesProvider) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/profile',
+                path: '/settings',
                 pageBuilder: (context, state) =>
-                    const NoTransitionPage(child: ProfileScreen()),
+                    const NoTransitionPage(child: SettingsScreen()),
               ),
             ],
           ),
         ],
       ),
       GoRoute(
-        path: '/settings',
-        builder: (context, state) => const SettingsScreen(),
+        path: '/profile',
+        redirect: (context, state) => '/settings',
       ),
       GoRoute(
         path: '/pairing',

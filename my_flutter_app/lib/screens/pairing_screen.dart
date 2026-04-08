@@ -236,27 +236,86 @@ class _PairingScreenState extends State<PairingScreen> {
                           borderRadius: BorderRadius.circular(12), 
                         side: BorderSide(color: colorScheme.outlineVariant)
                       ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                        leading: Icon(
-                          LucideIcons.radio,
-                          color: colorScheme.primary,
-                          size: 28,
-                        ),
-                        title: Text('ESP32 Tracker', 
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          )),
-                        subtitle: Text('Serial: $serialNumber$distance',
-                          style: theme.textTheme.bodySmall?.copyWith(fontSize: 12)),
-                        trailing: ElevatedButton(
-                          onPressed: () => _startPairing(tracker),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            minimumSize: const Size(0, 36)
-                          ),
-                          child: const Text('Connect'),
-                        ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final compact = constraints.maxWidth < 380;
+
+                          if (compact) {
+                            return Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(
+                                        LucideIcons.radio,
+                                        color: colorScheme.primary,
+                                        size: 28,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'ESP32 Tracker',
+                                              style: theme.textTheme.labelLarge?.copyWith(
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Serial: $serialNumber$distance',
+                                              style: theme.textTheme.bodySmall?.copyWith(
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton(
+                                      onPressed: () => _startPairing(tracker),
+                                      style: ElevatedButton.styleFrom(
+                                        minimumSize: const Size(0, 40),
+                                      ),
+                                      child: const Text('Connect'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                            leading: Icon(
+                              LucideIcons.radio,
+                              color: colorScheme.primary,
+                              size: 28,
+                            ),
+                            title: Text('ESP32 Tracker', 
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              )),
+                            subtitle: Text('Serial: $serialNumber$distance',
+                              style: theme.textTheme.bodySmall?.copyWith(fontSize: 12)),
+                            trailing: ElevatedButton(
+                              onPressed: () => _startPairing(tracker),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                minimumSize: const Size(0, 36)
+                              ),
+                              child: const Text('Connect'),
+                            ),
+                          );
+                        },
                       ),
                     ),
                     );

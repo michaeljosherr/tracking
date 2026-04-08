@@ -499,25 +499,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: filters.length,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final crossAxisCount = constraints.maxWidth < 280 ? 1 : 2;
+                        final mainAxisExtent = crossAxisCount == 1 ? 72.0 : 82.0;
+
+                        return GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: filters.length,
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: crossAxisCount,
                             mainAxisSpacing: 8,
                             crossAxisSpacing: 8,
-                            childAspectRatio: 2.55,
+                            mainAxisExtent: mainAxisExtent,
                           ),
-                      itemBuilder: (context, index) {
-                        final filter = filters[index];
-                        return _buildFilterTile(
-                          label: filter.$1,
-                          value: filter.$2,
-                          count: filter.$3,
-                          icon: filter.$4,
-                          color: filter.$5,
+                          itemBuilder: (context, index) {
+                            final filter = filters[index];
+                            return _buildFilterTile(
+                              label: filter.$1,
+                              value: filter.$2,
+                              count: filter.$3,
+                              icon: filter.$4,
+                              color: filter.$5,
+                            );
+                          },
                         );
                       },
                     ),
@@ -625,6 +631,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final countLabel = '$filteredCount device${filteredCount == 1 ? "" : "s"}';
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -645,14 +652,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 420;
+
+          return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
+              if (compact) ...[
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -674,56 +682,129 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primary.withValues(
-                          alpha: isDark ? 0.18 : 0.08,
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(
+                              alpha: isDark ? 0.18 : 0.08,
+                            ),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            countLabel,
+                            style: TextStyle(
+                              color: colorScheme.primary,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        countLabel,
-                        style: TextStyle(
-                          color: colorScheme.primary,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
+                        const Spacer(),
+                        _buildAddTrackerButton(isCompact: true),
+                      ],
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              _buildAddTrackerButton(isCompact: isMobile),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: colorScheme.outlineVariant),
-            ),
-            child: Row(
-              children: [
-                Text(
-                  'Display mode',
-                  style: textTheme.labelSmall?.copyWith(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
+              ] else ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Tracker library',
+                            style: textTheme.labelSmall?.copyWith(
+                              color: colorScheme.primary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Registered Trackers',
+                            style: textTheme.headlineSmall?.copyWith(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withValues(
+                                alpha: isDark ? 0.18 : 0.08,
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              countLabel,
+                              style: TextStyle(
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    _buildAddTrackerButton(isCompact: isMobile),
+                  ],
                 ),
-                const Spacer(),
-                SizedBox(height: 44, child: _buildViewToggle(isMobile)),
               ],
-            ),
-          ),
-        ],
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: colorScheme.outlineVariant),
+                ),
+                child: compact
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Display mode',
+                            style: textTheme.labelSmall?.copyWith(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(height: 44, child: _buildViewToggle(true)),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Text(
+                            'Display mode',
+                            style: textTheme.labelSmall?.copyWith(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const Spacer(),
+                          SizedBox(height: 44, child: _buildViewToggle(isMobile)),
+                        ],
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1013,30 +1094,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Column(
       key: const ValueKey('grid-view'),
       children: [
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 14,
-            mainAxisSpacing: 14,
-            mainAxisExtent: 220,
-          ),
-          itemCount: trackers.length,
-          itemBuilder: (context, index) {
-            final tracker = trackers[index];
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final crossAxisCount = constraints.maxWidth < 520 ? 1 : 2;
+            final mainAxisExtent = crossAxisCount == 1 ? 200.0 : 220.0;
 
-            return TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.0, end: 1.0),
-              duration: Duration(milliseconds: 250 + (40 * index)),
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return Transform.scale(
-                  scale: 0.96 + (0.04 * value),
-                  child: Opacity(opacity: value, child: child),
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
+                mainAxisExtent: mainAxisExtent,
+              ),
+              itemCount: trackers.length,
+              itemBuilder: (context, index) {
+                final tracker = trackers[index];
+
+                return TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: Duration(milliseconds: 250 + (40 * index)),
+                  curve: Curves.easeOut,
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: 0.96 + (0.04 * value),
+                      child: Opacity(opacity: value, child: child),
+                    );
+                  },
+                  child: _buildGridCard(tracker),
                 );
               },
-              child: _buildGridCard(tracker),
             );
           },
         ),
@@ -1065,48 +1153,95 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final start = (currentPage * _listPageSize) + 1;
     final end = ((currentPage + 1) * _listPageSize).clamp(0, totalTrackers);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              'Showing $start-$end of $totalTrackers',
-              style: TextStyle(
-                color: textTheme.bodyMedium?.color,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 360;
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: colorScheme.outlineVariant),
           ),
-          IconButton(
-            onPressed: currentPage == 0
-                ? null
-                : () => _goToListPage(currentPage - 1),
-            icon: const Icon(LucideIcons.chevronLeft, size: 18),
-            tooltip: 'Previous page',
-          ),
-          Text(
-            '${currentPage + 1}/$totalPages',
-            style: TextStyle(
-              color: textTheme.bodyLarge?.color,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          IconButton(
-            onPressed: currentPage >= totalPages - 1
-                ? null
-                : () => _goToListPage(currentPage + 1),
-            icon: const Icon(LucideIcons.chevronRight, size: 18),
-            tooltip: 'Next page',
-          ),
-        ],
-      ),
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Showing $start-$end of $totalTrackers',
+                      style: TextStyle(
+                        color: textTheme.bodyMedium?.color,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        IconButton(
+                          onPressed: currentPage == 0
+                              ? null
+                              : () => _goToListPage(currentPage - 1),
+                          icon: const Icon(LucideIcons.chevronLeft, size: 18),
+                          tooltip: 'Previous page',
+                        ),
+                        Text(
+                          '${currentPage + 1}/$totalPages',
+                          style: TextStyle(
+                            color: textTheme.bodyLarge?.color,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: currentPage >= totalPages - 1
+                              ? null
+                              : () => _goToListPage(currentPage + 1),
+                          icon: const Icon(LucideIcons.chevronRight, size: 18),
+                          tooltip: 'Next page',
+                        ),
+                      ],
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Showing $start-$end of $totalTrackers',
+                        style: TextStyle(
+                          color: textTheme.bodyMedium?.color,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: currentPage == 0
+                          ? null
+                          : () => _goToListPage(currentPage - 1),
+                      icon: const Icon(LucideIcons.chevronLeft, size: 18),
+                      tooltip: 'Previous page',
+                    ),
+                    Text(
+                      '${currentPage + 1}/$totalPages',
+                      style: TextStyle(
+                        color: textTheme.bodyLarge?.color,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: currentPage >= totalPages - 1
+                          ? null
+                          : () => _goToListPage(currentPage + 1),
+                      icon: const Icon(LucideIcons.chevronRight, size: 18),
+                      tooltip: 'Next page',
+                    ),
+                  ],
+                ),
+        );
+      },
     );
   }
 
