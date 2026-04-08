@@ -169,22 +169,10 @@ class _AppTopBarState extends State<AppTopBar> {
                         ],
                       );
 
-                      final actions = Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildAlertsMenuButton(
-                            recentAlerts: menuAlerts,
-                            badgeCount: unreadAlerts.length,
-                            compact: compactHeader,
-                          ),
-                          SizedBox(width: compactHeader ? 6 : 8),
-                          _buildActionButton(
-                            key: const ValueKey('profile-topbar-button'),
-                            icon: LucideIcons.settings,
-                            onTap: () => context.push('/settings'),
-                            compact: compactHeader,
-                          ),
-                        ],
+                      final actions = _buildAlertsMenuButton(
+                        recentAlerts: menuAlerts,
+                        badgeCount: unreadAlerts.length,
+                        compact: compactHeader,
                       );
 
                       if (compactHeader) {
@@ -212,57 +200,6 @@ class _AppTopBarState extends State<AppTopBar> {
                   },
                 ),
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    Key? key,
-    required IconData icon,
-    required VoidCallback onTap,
-    bool compact = false,
-  }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-    final buttonSize = compact ? 40.0 : 44.0;
-    final radius = compact ? 16.0 : 18.0;
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            isDark ? const Color(0xFF1E293B) : const Color(0xFFFFFFFF),
-            isDark ? const Color(0xFF172033) : const Color(0xFFF4F8FF),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: colorScheme.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        key: key,
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(radius),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(radius),
-          child: SizedBox(
-            width: buttonSize,
-            height: buttonSize,
-            child: Center(
-              child: Icon(icon, color: colorScheme.primary, size: 18),
             ),
           ),
         ),

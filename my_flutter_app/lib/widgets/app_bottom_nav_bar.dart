@@ -117,9 +117,9 @@ class AppBottomNavBar extends StatelessWidget {
                       label: 'Alerts',
                     ),
                     NavigationDestination(
-                      icon: Icon(LucideIcons.userRound),
-                      selectedIcon: Icon(LucideIcons.userRoundCog),
-                      label: 'Profile',
+                      icon: Icon(LucideIcons.settings),
+                      selectedIcon: Icon(LucideIcons.settings2),
+                      label: 'Settings',
                     ),
                   ],
                 ),

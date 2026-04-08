@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/core/app_preferences_provider.dart';
+import 'package:my_flutter_app/core/auth_provider.dart';
 import 'package:my_flutter_app/core/theme_provider.dart';
 import 'package:my_flutter_app/widgets/app_page_layout.dart';
+import 'package:my_flutter_app/widgets/app_top_bar.dart';
 import 'package:provider/provider.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -12,75 +14,190 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
+    final user = context.watch<AuthProvider>().user;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-        centerTitle: false,
-        backgroundColor: isDark ? colorScheme.surface : const Color(0xFFF1F5F9),
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          onPressed: () => context.pop(),
-          icon: const Icon(Icons.arrow_back_rounded),
-        ),
-      ),
       body: SafeArea(
-        top: false,
-        child: ListView(
-          physics: const BouncingScrollPhysics(),
+        bottom: false,
+        child: Column(
           children: [
-            AppPageLayout(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            const AppTopBar(
+              title: 'Settings',
+              subtitle: 'Manage appearance, local profile, and guided setup.',
+            ),
+            Expanded(
+              child: ListView(
+                physics: const BouncingScrollPhysics(),
                 children: [
-                  _buildSectionTitle(context, 'Appearance'),
-                  _buildThemeCard(context),
-                  const SizedBox(height: 24),
-                  _buildSectionTitle(context, 'Guidance'),
-                  _buildActionCard(
-                    context: context,
-                    icon: Icons.play_circle_outline_rounded,
-                    iconColor: const Color(0xFF2563EB),
-                    backgroundColor: const Color(0xFFEFF6FF),
-                    title: 'Replay onboarding',
-                    subtitle: 'Show the app walkthrough again from the start.',
-                    onTap: () async {
-                      HapticFeedback.lightImpact();
-                      await context
-                          .read<AppPreferencesProvider>()
-                          .resetOnboarding();
-                      if (context.mounted) context.go('/onboarding');
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  _buildActionCard(
-                    context: context,
-                    icon: LucideIcons.shieldCheck,
-                    iconColor: const Color(0xFF0F766E),
-                    backgroundColor: const Color(0xFFECFDF5),
-                    title: 'System defaults',
-                    subtitle:
-                        'The app keeps a local session and no longer requires a login screen.',
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Local session mode is already enabled',
-                          ),
-                          behavior: SnackBarBehavior.floating,
+                  AppPageLayout(
+                    includeBottomSafeArea: false,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildProfileCard(context, user),
+                        const SizedBox(height: 24),
+                        _buildSectionTitle(context, 'Appearance'),
+                        _buildThemeCard(context),
+                        const SizedBox(height: 24),
+                        _buildSectionTitle(context, 'Session'),
+                        _buildActionCard(
+                          context: context,
+                          icon: Icons.restart_alt_rounded,
+                          iconColor: const Color(0xFF0F766E),
+                          backgroundColor: const Color(0xFFECFDF5),
+                          title: 'Restore default profile',
+                          subtitle:
+                              'Reset the local profile state without leaving the app.',
+                          onTap: () {
+                            HapticFeedback.mediumImpact();
+                            context.read<AuthProvider>().resetLocalSession();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Default profile restored'),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
+                        const SizedBox(height: 16),
+                        _buildActionCard(
+                          context: context,
+                          icon: LucideIcons.shieldCheck,
+                          iconColor: const Color(0xFF0F766E),
+                          backgroundColor: const Color(0xFFECFDF5),
+                          title: 'System defaults',
+                          subtitle:
+                              'The app keeps a local session and no longer requires a login screen.',
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Local session mode is already enabled',
+                                ),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        _buildSectionTitle(context, 'Guidance'),
+                        _buildActionCard(
+                          context: context,
+                          icon: Icons.play_circle_outline_rounded,
+                          iconColor: const Color(0xFF2563EB),
+                          backgroundColor: const Color(0xFFEFF6FF),
+                          title: 'Replay onboarding',
+                          subtitle:
+                              'Show the app walkthrough again from the start.',
+                          onTap: () async {
+                            HapticFeedback.lightImpact();
+                            await context
+                                .read<AppPreferencesProvider>()
+                                .resetOnboarding();
+                            if (context.mounted) context.go('/onboarding');
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileCard(BuildContext context, User? user) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const CircleAvatar(
+            radius: 30,
+            backgroundColor: Color(0xFF2563EB),
+            child: Icon(Icons.person_rounded, color: Colors.white, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user?.name ?? 'Local User',
+                  style: textTheme.headlineSmall?.copyWith(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  user?.email ?? 'local@tracker.app',
+                  style: textTheme.bodyMedium?.copyWith(
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildMetaPill(
+                      context: context,
+                      label: (user?.role ?? 'local').toUpperCase(),
+                      color: const Color(0xFF1D4ED8),
+                      backgroundColor: const Color(0xFFEFF6FF),
+                    ),
+                    _buildMetaPill(
+                      context: context,
+                      label: 'LOCAL SESSION',
+                      color: const Color(0xFF0F766E),
+                      backgroundColor: const Color(0xFFECFDF5),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetaPill({
+    required BuildContext context,
+    required String label,
+    required Color color,
+    required Color backgroundColor,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isDark ? color.withValues(alpha: 0.16) : backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
         ),
       ),
     );
