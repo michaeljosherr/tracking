@@ -501,8 +501,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 12),
                     LayoutBuilder(
                       builder: (context, constraints) {
-                        final crossAxisCount = constraints.maxWidth < 390 ? 1 : 2;
-                        final mainAxisExtent = crossAxisCount == 1 ? 72.0 : 84.0;
+                        final crossAxisCount = constraints.maxWidth < 280 ? 1 : 2;
+                        final mainAxisExtent = crossAxisCount == 1 ? 72.0 : 82.0;
 
                         return GridView.builder(
                           shrinkWrap: true,
