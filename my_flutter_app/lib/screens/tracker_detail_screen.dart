@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:my_flutter_app/core/tracker_provider.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
+import 'package:my_flutter_app/widgets/tracker_radar.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class TrackerDetailScreen extends StatelessWidget {
@@ -175,6 +176,8 @@ class TrackerDetailScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             _buildHeaderCard(context, tracker),
+            const SizedBox(height: 24),
+            TrackerRadarPanel(tracker: tracker),
             const SizedBox(height: 24),
             _buildStatsGrid(context, tracker),
             const SizedBox(height: 32),

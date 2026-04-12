@@ -1071,7 +1071,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Opacity(opacity: value, child: child),
               );
             },
-            child: TrackerCard(tracker: tracker),
+            child: TrackerCard(
+              key: ValueKey(tracker.id),
+              tracker: tracker,
+            ),
           ),
         ),
         if (totalPages > 1) ...[
@@ -1097,7 +1100,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         LayoutBuilder(
           builder: (context, constraints) {
             final crossAxisCount = constraints.maxWidth < 520 ? 1 : 2;
-            final mainAxisExtent = crossAxisCount == 1 ? 200.0 : 220.0;
+            final mainAxisExtent = crossAxisCount == 1 ? 252.0 : 268.0;
 
             return GridView.builder(
               shrinkWrap: true,
@@ -1110,19 +1113,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               itemCount: trackers.length,
               itemBuilder: (context, index) {
-                final tracker = trackers[index];
+                final shellTracker = trackers[index];
 
-                return TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  duration: Duration(milliseconds: 250 + (40 * index)),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) {
-                    return Transform.scale(
-                      scale: 0.96 + (0.04 * value),
-                      child: Opacity(opacity: value, child: child),
+                return Selector<TrackerProvider, Tracker>(
+                  key: ValueKey(shellTracker.id),
+                  selector: (_, p) =>
+                      p.getTracker(shellTracker.id) ?? shellTracker,
+                  builder: (context, live, _) {
+                    return TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      duration: Duration(milliseconds: 250 + (40 * index)),
+                      curve: Curves.easeOut,
+                      builder: (context, value, child) {
+                        return Transform.scale(
+                          scale: 0.96 + (0.04 * value),
+                          child: Opacity(opacity: value, child: child),
+                        );
+                      },
+                      child: _buildGridCard(live),
                     );
                   },
-                  child: _buildGridCard(tracker),
                 );
               },
             );
@@ -1295,19 +1305,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   color: colorScheme.primary,
                 ),
               ),
-              const SizedBox(height: 14),
-              Expanded(
-                child: Text(
-                  tracker.name,
-                  style: textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
               const SizedBox(height: 10),
+              Text(
+                tracker.name,
+                style: textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -1340,7 +1348,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Text(
+                    'Signal',
+                    style: TextStyle(
+                      color: textTheme.bodySmall?.color,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${tracker.signalStrength}%',
+                    style: TextStyle(
+                      color: textTheme.bodyLarge?.color,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: tracker.signalStrength / 100,
+                  minHeight: 4,
+                  backgroundColor: colorScheme.outlineVariant.withValues(
+                    alpha: 0.35,
+                  ),
+                  color: tracker.signalStrength >= 70
+                      ? Colors.green.shade500
+                      : tracker.signalStrength >= 40
+                          ? Colors.orange.shade500
+                          : Colors.red.shade500,
+                ),
+              ),
+              if (tracker.rssi != null || tracker.distance != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  [
+                    if (tracker.rssi != null) '${tracker.rssi} dBm',
+                    if (tracker.distance != null)
+                      '${tracker.distance!.toStringAsFixed(1)} m',
+                  ].join(' · '),
+                  style: TextStyle(
+                    color: textTheme.bodySmall?.color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              const Spacer(),
               Text(
                 tracker.deviceId,
                 style: TextStyle(
