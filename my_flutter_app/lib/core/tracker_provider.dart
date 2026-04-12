@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:my_flutter_app/core/ble_service.dart';
+import 'package:my_flutter_app/core/device_heading_listener.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 
 class TrackerProvider with ChangeNotifier {
@@ -17,6 +20,13 @@ class TrackerProvider with ChangeNotifier {
   bool _isBackgroundScanning = false;
   final Set<String> _pingingDevices = {};  // Track devices currently being pinged
   Timer? _offlineCheckTimer;  // Timer to check for offline trackers
+
+  /// Consecutive BLE samples where the tag looks "very close"; used to auto-lock bearing.
+  final Map<String, int> _autoBearingCloseStreak = {};
+
+  static const double _autoBearingMaxDistanceM = 1.2;
+  static const int _autoBearingMinRssiDbm = -58;
+  static const int _autoBearingStreakRequired = 6;
 
   static const String _trackersStorageKey = 'registered_trackers';
   static const int _offlineThresholdSeconds = 20;  // Mark as offline if not seen for 20 seconds
@@ -46,12 +56,18 @@ class TrackerProvider with ChangeNotifier {
   Future<void> initialize() async {
     await _loadTrackers();
     print('[TrackerProvider] Initialized with ${_trackers.length} saved tracker(s)');
-    
-    // Auto-start background scanning if trackers are loaded
+
     if (_trackers.isNotEmpty) {
+      await _ensureHeadingForTracking();
       print('[TrackerProvider] Auto-starting background scanning after loading ${_trackers.length} tracker(s)');
       await startBackgroundScanning();
     }
+  }
+
+  Future<void> _ensureHeadingForTracking() async {
+    if (kIsWeb) return;
+    await Permission.locationWhenInUse.request();
+    DeviceHeadingStore.ensureStarted();
   }
 
   /// Load trackers from SharedPreferences
@@ -244,7 +260,7 @@ class TrackerProvider with ChangeNotifier {
         print('[TrackerProvider]   ✓ Found registered tracker: "${tracker.name}"');
 
         // Update RSSI and distance in real-time
-        final updatedTracker = tracker.copyWith(
+        var updatedTracker = tracker.copyWith(
           rssi: scanned.rssi,
           rssiFiltered: scanned.rssiFiltered,
           distance: scanned.distance,
@@ -253,7 +269,13 @@ class TrackerProvider with ChangeNotifier {
           status: TrackerStatus.connected,
         );
 
+        final beforeBearing = updatedTracker.tagCompassBearingDeg;
+        updatedTracker = _applyProximityAutoTagBearing(updatedTracker);
         _trackers[index] = updatedTracker;
+        if (beforeBearing == null &&
+            updatedTracker.tagCompassBearingDeg != null) {
+          unawaited(_saveTrackers());
+        }
         final oldDistanceStr = tracker.distance != null ? tracker.distance!.toStringAsFixed(2) : 'null';
         final newDistanceStr = updatedTracker.distance != null ? updatedTracker.distance!.toStringAsFixed(2) : 'null';
         print('[TrackerProvider]   Updated "${tracker.name}": Distance ${oldDistanceStr}m → ${newDistanceStr}m');
@@ -267,6 +289,37 @@ class TrackerProvider with ChangeNotifier {
       print('[TrackerProvider] Notifying listeners');
       notifyListeners();
     }
+  }
+
+  /// BLE has no angle-of-arrival; when the tag is **very** close (or RSSI is very strong),
+  /// we assume the phone top is roughly aimed at it and lock [Tracker.tagCompassBearingDeg]
+  /// to the current fused heading once.
+  Tracker _applyProximityAutoTagBearing(Tracker t) {
+    if (t.tagCompassBearingDeg != null) return t;
+
+    final h = DeviceHeadingStore.heading.value;
+    if (h == null) return t;
+
+    final d = t.distance;
+    final rssi = t.rssi;
+    final veryCloseByDistance =
+        d != null && d > 0 && d < _autoBearingMaxDistanceM;
+    final veryStrongByRssi =
+        rssi != null && rssi >= _autoBearingMinRssiDbm;
+    final looksClose = veryCloseByDistance || veryStrongByRssi;
+
+    final id = t.id;
+    if (looksClose) {
+      _autoBearingCloseStreak[id] = (_autoBearingCloseStreak[id] ?? 0) + 1;
+    } else {
+      _autoBearingCloseStreak[id] = 0;
+    }
+
+    if ((_autoBearingCloseStreak[id] ?? 0) >= _autoBearingStreakRequired) {
+      _autoBearingCloseStreak[id] = 0;
+      return t.copyWith(tagCompassBearingDeg: _normCompassHeading(h));
+    }
+    return t;
   }
 
   /// Stop continuous background scanning
@@ -363,6 +416,33 @@ class TrackerProvider with ChangeNotifier {
     }
   }
 
+  double _normCompassHeading(double degrees) {
+    var v = degrees % 360.0;
+    if (v < 0) v += 360.0;
+    return v;
+  }
+
+  /// Saves magnetic bearing to the tag (0–360°, CW from north). Call while the
+  /// **top edge of the phone** points at the tag; [bearingDeg] is the live compass heading.
+  Future<void> setTrackerTagCompassBearing(String id, double bearingDeg) async {
+    final index = _trackers.indexWhere((t) => t.id == id);
+    if (index == -1) return;
+    _trackers[index] = _trackers[index].copyWith(
+      tagCompassBearingDeg: _normCompassHeading(bearingDeg),
+    );
+    notifyListeners();
+    await _saveTrackers();
+  }
+
+  Future<void> clearTrackerTagCompassBearing(String id) async {
+    final index = _trackers.indexWhere((t) => t.id == id);
+    if (index == -1) return;
+    _autoBearingCloseStreak.remove(id);
+    _trackers[index] = _trackers[index].copyWith(tagCompassBearingDeg: null);
+    notifyListeners();
+    await _saveTrackers();
+  }
+
   /// Register a discovered BLE device as an active tracker
   Future<void> registerDevice(PendingTracker pendingTracker, String name) async {
     // Generate a unique ID
@@ -398,15 +478,21 @@ class TrackerProvider with ChangeNotifier {
     print('[TrackerProvider] ✓ Registered device: "$name" (${pendingTracker.serialNumber})');
     print('[TrackerProvider] Total trackers: ${_trackers.length}');
     notifyListeners();
-    
+
+    await _ensureHeadingForTracking();
+
     // Persist to storage
     await _saveTrackers();
   }
 
   Future<void> unregisterTracker(String id) async {
+    _autoBearingCloseStreak.remove(id);
     _trackers.removeWhere((t) => t.id == id);
+    if (_trackers.isEmpty) {
+      DeviceHeadingStore.stop();
+    }
     notifyListeners();
-    
+
     // Persist to storage
     await _saveTrackers();
   }

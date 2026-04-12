@@ -16,6 +16,10 @@ class Tracker {
   final String? serialNumber; // From device name parsing
   final String? bleAddress; // MAC address
 
+  /// Magnetic bearing to tag (degrees, 0 = N, CW). Set automatically when the tag
+  /// is very close or RSSI is very strong (BLE has no bearing); optional clear in UI.
+  final double? tagCompassBearingDeg;
+
   Tracker({
     required this.id,
     required this.deviceId,
@@ -29,7 +33,10 @@ class Tracker {
     this.distance,
     this.serialNumber,
     this.bleAddress,
+    this.tagCompassBearingDeg,
   });
+
+  static const Object _kNoChangeTagBearing = Object();
 
   Tracker copyWith({
     String? id,
@@ -44,6 +51,7 @@ class Tracker {
     double? distance,
     String? serialNumber,
     String? bleAddress,
+    Object? tagCompassBearingDeg = _kNoChangeTagBearing,
   }) {
     return Tracker(
       id: id ?? this.id,
@@ -58,6 +66,9 @@ class Tracker {
       distance: distance ?? this.distance,
       serialNumber: serialNumber ?? this.serialNumber,
       bleAddress: bleAddress ?? this.bleAddress,
+      tagCompassBearingDeg: identical(tagCompassBearingDeg, _kNoChangeTagBearing)
+          ? this.tagCompassBearingDeg
+          : tagCompassBearingDeg as double?,
     );
   }
 
@@ -76,6 +87,7 @@ class Tracker {
       'distance': distance,
       'serialNumber': serialNumber,
       'bleAddress': bleAddress,
+      'tagCompassBearingDeg': tagCompassBearingDeg,
     };
   }
 
@@ -97,6 +109,7 @@ class Tracker {
       distance: json['distance'] as double?,
       serialNumber: json['serialNumber'] as String?,
       bleAddress: json['bleAddress'] as String?,
+      tagCompassBearingDeg: (json['tagCompassBearingDeg'] as num?)?.toDouble(),
     );
   }
 }
