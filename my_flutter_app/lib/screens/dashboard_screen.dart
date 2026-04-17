@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/core/tracker_provider.dart';
@@ -157,19 +158,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 activeAlerts: activeAlerts.length,
                               ),
                               const SizedBox(height: 12),
-                              _buildSearchAndFilters(
+                              _buildRegisteredTrackersSection(
+                                filteredTrackers,
+                                isMobile,
                                 totalTrackers: trackers.length,
                                 connectedCount: connectedCount,
                                 outOfRangeCount: outOfRangeCount,
                                 disconnectedCount: disconnectedCount,
                               ),
-                              const SizedBox(height: 18),
-                              _buildTrackersHeader(
-                                filteredTrackers.length,
-                                isMobile,
-                              ),
-                              const SizedBox(height: 12),
-                              _buildTrackerCollection(filteredTrackers),
                             ],
                           ),
                         ),
@@ -200,18 +196,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.03),
-            blurRadius: 20,
-            offset: const Offset(0, 6),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -219,8 +215,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 Text(
                   'Overview',
-                  style: textTheme.titleMedium?.copyWith(
-                    fontSize: 15,
+                  style: textTheme.titleSmall?.copyWith(
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -230,16 +226,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     'Needs attention',
                     style: TextStyle(
                       color: Color(0xFFB91C1C),
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 6,
+              runSpacing: 6,
               children: [
                 _buildOverviewPill(
                   icon: LucideIcons.users,
@@ -259,7 +255,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             LayoutBuilder(
               builder: (context, constraints) {
                 final columns = constraints.maxWidth < 420
@@ -267,12 +263,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     : constraints.maxWidth < 800
                     ? 2
                     : 3;
+                final gap = 8.0;
                 final itemWidth =
-                    (constraints.maxWidth - ((columns - 1) * 12)) / columns;
+                    (constraints.maxWidth - ((columns - 1) * gap)) / columns;
 
                 return Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
+                  spacing: gap,
+                  runSpacing: gap,
                   children: [
                     SizedBox(
                       width: itemWidth,
@@ -320,7 +317,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : backgroundColor;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: pillColor,
         borderRadius: BorderRadius.circular(999),
@@ -328,13 +325,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: accentColor),
-          const SizedBox(width: 6),
+          Icon(icon, size: 12, color: accentColor),
+          const SizedBox(width: 4),
           Text(
             label,
             style: TextStyle(
               color: accentColor,
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -348,6 +345,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required int connectedCount,
     required int outOfRangeCount,
     required int disconnectedCount,
+    bool embedded = false,
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -390,12 +388,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? 'All devices'
         : filters.firstWhere((filter) => filter.$2 == _filter).$1;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
             InkWell(
               borderRadius: BorderRadius.circular(14),
               onTap: () => setState(() => _filtersExpanded = !_filtersExpanded),
@@ -537,6 +533,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
               sizeCurve: Curves.easeInOut,
             ),
           ],
+    );
+
+    if (embedded) {
+      return _buildEmbeddedSearchFiltersShell(body);
+    }
+
+    return Card(
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: body,
+      ),
+    );
+  }
+
+  /// Rounded “search field” shell for the tracker list (embedded mode).
+  Widget _buildEmbeddedSearchFiltersShell(Widget child) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(
+        alpha: theme.brightness == Brightness.dark ? 0.55 : 1.0,
+      ),
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.65),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: child,
         ),
       ),
     );
@@ -623,16 +660,77 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildTrackersHeader(int filteredCount, bool isMobile) {
+  Widget _buildDisplayModeSection({
+    required bool compact,
+    required bool isMobile,
+  }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
+
+    final row = Row(
+      children: [
+        Icon(
+          LucideIcons.layoutGrid,
+          size: 16,
+          color: colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Display mode',
+            style: textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 38,
+          child: _buildViewToggle(compact, height: 38),
+        ),
+      ],
+    );
+
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(
+        alpha: theme.brightness == Brightness.dark ? 0.45 : 1.0,
+      ),
+      borderRadius: BorderRadius.circular(16),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.55),
+          ),
+        ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: compact ? 10 : 12,
+          ),
+          child: row,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRegisteredTrackersSection(
+    List<Tracker> filteredTrackers,
+    bool isMobile, {
+    required int totalTrackers,
+    required int connectedCount,
+    required int outOfRangeCount,
+    required int disconnectedCount,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final countLabel = '$filteredCount device${filteredCount == 1 ? "" : "s"}';
+    final hasTrackers = filteredTrackers.isNotEmpty;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -642,71 +740,103 @@ class _DashboardScreenState extends State<DashboardScreen> {
             isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FBFF),
           ],
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.04),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 420;
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildTrackersHeaderContent(
+            filteredTrackers.length,
+            isMobile,
+            totalTrackers: totalTrackers,
+            connectedCount: connectedCount,
+            outOfRangeCount: outOfRangeCount,
+            disconnectedCount: disconnectedCount,
+          ),
+          if (hasTrackers)
+            Divider(
+              height: 1,
+              thickness: 1,
+              color: colorScheme.outlineVariant,
+            ),
+          _buildTrackerCollection(
+            filteredTrackers,
+            connectFirstListCard: hasTrackers,
+          ),
+        ],
+      ),
+    );
+  }
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildTrackersHeaderContent(
+    int filteredCount,
+    bool isMobile, {
+    required int totalTrackers,
+    required int connectedCount,
+    required int outOfRangeCount,
+    required int disconnectedCount,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final countLabel = '$filteredCount device${filteredCount == 1 ? "" : "s"}';
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 420;
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Text(
+                'Tracker library',
+                style: textTheme.labelSmall?.copyWith(
+                  color: colorScheme.primary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              const SizedBox(height: 6),
               if (compact) ...[
-                Column(
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Tracker library',
-                      style: textTheme.labelSmall?.copyWith(
-                        color: colorScheme.primary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Registered Trackers',
-                      style: textTheme.headlineSmall?.copyWith(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary.withValues(
-                              alpha: isDark ? 0.18 : 0.08,
-                            ),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            countLabel,
-                            style: TextStyle(
-                              color: colorScheme.primary,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                            ),
-                          ),
+                    Expanded(
+                      child: Text(
+                        'Registered Trackers',
+                        style: textTheme.titleLarge?.copyWith(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.35,
+                          height: 1.15,
                         ),
-                        const Spacer(),
-                        _buildAddTrackerButton(isCompact: true),
-                      ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    _buildDeviceCountPill(countLabel, colorScheme, isDark),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildAddTrackerButton(isCompact: true),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _buildAllTrackersRadarButton(isCompact: true),
                     ),
                   ],
                 ),
@@ -719,92 +849,98 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Tracker library',
-                            style: textTheme.labelSmall?.copyWith(
-                              color: colorScheme.primary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
                             'Registered Trackers',
                             style: textTheme.headlineSmall?.copyWith(
-                              fontSize: 20,
                               fontWeight: FontWeight.w800,
-                              letterSpacing: -0.2,
+                              letterSpacing: -0.4,
+                              height: 1.1,
                             ),
                           ),
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colorScheme.primary.withValues(
-                                alpha: isDark ? 0.18 : 0.08,
-                              ),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              countLabel,
-                              style: TextStyle(
-                                color: colorScheme.primary,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
+                          const SizedBox(height: 8),
+                          _buildDeviceCountPill(countLabel, colorScheme, isDark),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    _buildAddTrackerButton(isCompact: isMobile),
+                    const SizedBox(width: 16),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildAddTrackerButton(isCompact: isMobile),
+                        const SizedBox(width: 10),
+                        _buildAllTrackersRadarButton(isCompact: isMobile),
+                      ],
+                    ),
                   ],
                 ),
               ],
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: colorScheme.outlineVariant),
-                ),
-                child: compact
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Display mode',
-                            style: textTheme.labelSmall?.copyWith(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(height: 44, child: _buildViewToggle(true)),
-                        ],
-                      )
-                    : Row(
-                        children: [
-                          Text(
-                            'Display mode',
-                            style: textTheme.labelSmall?.copyWith(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const Spacer(),
-                          SizedBox(height: 44, child: _buildViewToggle(isMobile)),
-                        ],
-                      ),
+              const SizedBox(height: 12),
+              _buildDisplayModeSection(compact: compact, isMobile: isMobile),
+              const SizedBox(height: 12),
+              _buildSearchAndFilters(
+                totalTrackers: totalTrackers,
+                connectedCount: connectedCount,
+                outOfRangeCount: outOfRangeCount,
+                disconnectedCount: disconnectedCount,
+                embedded: true,
               ),
             ],
-          );
-        },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDeviceCountPill(
+    String countLabel,
+    ColorScheme colorScheme,
+    bool isDark,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: colorScheme.primary.withValues(alpha: isDark ? 0.2 : 0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: colorScheme.primary.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Text(
+        countLabel,
+        style: TextStyle(
+          color: colorScheme.primary,
+          fontWeight: FontWeight.w800,
+          fontSize: 11,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAllTrackersRadarButton({required bool isCompact}) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return FilledButton.tonalIcon(
+      onPressed: () {
+        HapticFeedback.lightImpact();
+        context.push('/radar');
+      },
+      icon: Icon(LucideIcons.scanSearch, size: isCompact ? 17 : 18),
+      label: Text(isCompact ? 'Radar' : 'Radar map'),
+      style: FilledButton.styleFrom(
+        foregroundColor: colorScheme.primary,
+        backgroundColor: colorScheme.primaryContainer.withValues(alpha: 0.55),
+        minimumSize: Size(0, isCompact ? 44 : 46),
+        padding: EdgeInsets.symmetric(
+          horizontal: isCompact ? 12 : 16,
+          vertical: 10,
+        ),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: isCompact ? 13 : 14,
+        ),
       ),
     );
   }
@@ -813,31 +949,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return FilledButton.icon(
-      onPressed: () => context.push('/pairing'),
-      icon: const Icon(LucideIcons.plus, size: 16),
-      label: Text(isCompact ? 'Add' : 'Add Tracker'),
+      onPressed: () => context.push(
+              '/hubs/select?t=${DateTime.now().millisecondsSinceEpoch}',
+            ),
+      icon: Icon(LucideIcons.plus, size: isCompact ? 17 : 18),
+      label: Text(isCompact ? 'Add' : 'Add tracker'),
       style: FilledButton.styleFrom(
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
-        minimumSize: const Size(0, 46),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        minimumSize: Size(0, isCompact ? 44 : 46),
+        padding: EdgeInsets.symmetric(
+          horizontal: isCompact ? 14 : 18,
+          vertical: 10,
+        ),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: isCompact ? 13 : 14,
+        ),
       ),
     );
   }
 
-  Widget _buildViewToggle(bool isMobile) {
+  Widget _buildViewToggle(bool isMobile, {double height = 40}) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final radius = height * 0.42;
 
     return Container(
-      height: 44,
+      height: height,
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
@@ -848,6 +993,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: LucideIcons.list,
             isSelected: !_isGridView,
             isLeading: true,
+            height: height,
+            radius: radius,
             onTap: () => _updateViewMode(false),
           ),
           _buildViewToggleSegment(
@@ -855,6 +1002,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: LucideIcons.layoutGrid,
             isSelected: _isGridView,
             isLeading: false,
+            height: height,
+            radius: radius,
             onTap: () => _updateViewMode(true),
           ),
         ],
@@ -867,6 +1016,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required IconData icon,
     required bool isSelected,
     required bool isLeading,
+    required double height,
+    required double radius,
     required VoidCallback onTap,
   }) {
     final theme = Theme.of(context);
@@ -878,20 +1029,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.horizontal(
-          left: isLeading ? const Radius.circular(17) : Radius.zero,
-          right: isLeading ? Radius.zero : const Radius.circular(17),
+          left: isLeading ? Radius.circular(radius - 1) : Radius.zero,
+          right: isLeading ? Radius.zero : Radius.circular(radius - 1),
         ),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          height: 44,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          height: height,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: isSelected
                 ? colorScheme.primary.withValues(alpha: 0.12)
                 : Colors.transparent,
             borderRadius: BorderRadius.horizontal(
-              left: isLeading ? const Radius.circular(17) : Radius.zero,
-              right: isLeading ? Radius.zero : const Radius.circular(17),
+              left: isLeading ? Radius.circular(radius - 1) : Radius.zero,
+              right: isLeading ? Radius.zero : Radius.circular(radius - 1),
             ),
             border: Border(
               right: isLeading
@@ -905,19 +1056,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Icon(
                 icon,
-                size: 16,
+                size: 15,
                 color: isSelected
                     ? colorScheme.primary
                     : theme.iconTheme.color,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
                   color: isSelected
                       ? colorScheme.primary
                       : textTheme.bodyLarge?.color,
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
                   height: 1,
                 ),
@@ -929,39 +1080,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildTrackerCollection(List<Tracker> trackers) {
+  Widget _buildTrackerCollection(
+    List<Tracker> trackers, {
+    bool connectFirstListCard = false,
+  }) {
     final theme = Theme.of(context);
 
     if (trackers.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
-          child: Column(
-            children: [
-              Icon(
-                LucideIcons.users,
-                size: 42,
-                color: theme.colorScheme.outline,
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+        child: Column(
+          children: [
+            Icon(
+              LucideIcons.users,
+              size: 36,
+              color: theme.colorScheme.outline,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'No trackers match your filters',
+              style: TextStyle(
+                color: theme.textTheme.bodyLarge?.color,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
               ),
-              SizedBox(height: 16),
-              Text(
-                'No trackers match your filters',
-                style: TextStyle(
-                  color: theme.textTheme.bodyLarge?.color,
-                  fontWeight: FontWeight.w700,
-                ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Try clearing the search field or switching to a different status.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: theme.textTheme.bodyMedium?.color,
+                height: 1.4,
+                fontSize: 13,
               ),
-              SizedBox(height: 6),
-              Text(
-                'Try clearing the search field or switching to a different status.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: theme.textTheme.bodyMedium?.color,
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
@@ -982,16 +1136,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
       child: _isGridView
-          ? _buildGridView(
-              gridTrackers,
-              totalTrackers: trackers.length,
-              visibleCount: visibleGridCount,
+          ? Padding(
+              padding: EdgeInsets.fromLTRB(
+                12,
+                connectFirstListCard ? 10 : 0,
+                12,
+                12,
+              ),
+              child: _buildGridView(
+                gridTrackers,
+                totalTrackers: trackers.length,
+                visibleCount: visibleGridCount,
+              ),
             )
           : _buildListView(
               listTrackers,
               currentPage: currentPage,
               totalPages: totalPages,
               totalTrackers: trackers.length,
+              flatFirstCard: connectFirstListCard,
             ),
     );
   }
@@ -1003,23 +1166,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(9),
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: colorScheme.primary.withValues(alpha: isDark ? 0.18 : 0.08),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: colorScheme.primary, size: 16),
+            child: Icon(icon, color: colorScheme.primary, size: 14),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1028,18 +1191,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   count: count,
                   style: TextStyle(
                     color: textTheme.bodyLarge?.color,
-                    fontSize: 22,
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
                     height: 1,
                   ),
                   duration: const Duration(milliseconds: 500),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   title,
                   style: TextStyle(
                     color: textTheme.bodyMedium?.color,
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1056,26 +1219,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required int currentPage,
     required int totalPages,
     required int totalTrackers,
+    bool flatFirstCard = false,
   }) {
     return Column(
       key: const ValueKey('list-view'),
       children: [
-        ...trackers.map(
-          (tracker) => TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.0, end: 1.0),
-            duration: const Duration(milliseconds: 320),
-            curve: Curves.easeOut,
-            builder: (context, value, child) {
-              return Transform.translate(
-                offset: Offset(0, 16 * (1 - value)),
-                child: Opacity(opacity: value, child: child),
-              );
-            },
-            child: TrackerCard(
-              key: ValueKey(tracker.id),
-              tracker: tracker,
-            ),
-          ),
+        ...trackers.asMap().entries.map(
+          (entry) {
+            final i = entry.key;
+            final tracker = entry.value;
+            return TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeOut,
+              builder: (context, value, child) {
+                return Transform.translate(
+                  offset: Offset(0, 16 * (1 - value)),
+                  child: Opacity(opacity: value, child: child),
+                );
+              },
+              child: TrackerCard(
+                key: ValueKey(tracker.id),
+                tracker: tracker,
+                flatTop: flatFirstCard && i == 0 && currentPage == 0,
+              ),
+            );
+          },
         ),
         if (totalPages > 1) ...[
           const SizedBox(height: 8),

@@ -439,8 +439,18 @@ class TrackerDetailScreen extends StatelessWidget {
           if (tracker.distance != null) ...[
             _buildBleDetailRow(
               context,
-              'Distance',
+              'Est. distance (phone ↔ tag)',
               '${tracker.distance?.toStringAsFixed(2)} m',
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 4),
+              child: Text(
+                'Combined in the app: your phone’s BLE range to the hub plus the hub’s Wi‑Fi range estimate to the tag (right‑triangle heuristic—not GPS).',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  height: 1.35,
+                ),
+              ),
             ),
             const SizedBox(height: 12),
           ],

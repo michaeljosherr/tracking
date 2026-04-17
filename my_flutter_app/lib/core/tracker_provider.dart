@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -9,35 +10,56 @@ import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 
+/// Result of attempting to register a tracker serial on a specific hub.
+enum SerialRegistrationOutcome {
+  success,
+  /// Same serial already saved for this hub.
+  duplicateOnThisHub,
+  /// Serial is registered under a different hub connection.
+  blockedOtherHub,
+  invalid,
+}
+
 class TrackerProvider with ChangeNotifier {
   final List<Tracker> _trackers = [];
   final List<Alert> _alerts = List.from(mockAlerts);
-  final List<PendingTracker> _pendingTrackers = [];
   final _uuid = const Uuid();
   final _ble = BleService();
 
-  bool _isScanning = false;
-  bool _isBackgroundScanning = false;
-  final Set<String> _pingingDevices = {};  // Track devices currently being pinged
-  Timer? _offlineCheckTimer;  // Timer to check for offline trackers
+  bool _isScanningHubs = false;
+  List<DiscoveredHub> _discoveredHubs = [];
+  final Set<String> _savedHubBleIds = {};
 
-  /// Consecutive BLE samples where the tag looks "very close"; used to auto-lock bearing.
+  bool _isBackgroundScanning = false;
+  final Set<String> _pingingDevices = {};
+  Timer? _offlineCheckTimer;
+
   final Map<String, int> _autoBearingCloseStreak = {};
+
+  /// Smooths hub-reported distance (WiFi RSSI path-loss is noisy; raw values can jump to 200–400 m).
+  final Map<String, double> _distanceEmaBySerial = {};
 
   static const double _autoBearingMaxDistanceM = 1.2;
   static const int _autoBearingMinRssiDbm = -58;
   static const int _autoBearingStreakRequired = 6;
 
   static const String _trackersStorageKey = 'registered_trackers';
-  static const int _offlineThresholdSeconds = 20;  // Mark as offline if not seen for 20 seconds
+  static const String _hubIdsStorageKey = 'saved_hub_ble_ids';
+  static const int _offlineThresholdSeconds = 20;
 
   List<Tracker> get trackers => _trackers;
   List<Alert> get alerts => _alerts;
-  List<PendingTracker> get pendingTrackers => _pendingTrackers;
-  bool get isScanning => _isScanning;
+  bool get isScanningHubs => _isScanningHubs;
+
+  /// Stable list reference until the next hub scan assigns a new list — avoids
+  /// hub UI rebuilding on every unrelated tracker/BLE [notifyListeners].
+  List<DiscoveredHub> get discoveredHubs => _discoveredHubs;
+
+  /// Hub BLE ids the user has explicitly opened or that have trackers.
+  List<String> get savedHubBleIds => _savedHubBleIds.toList()..sort();
+
   bool get isBackgroundScanning => _isBackgroundScanning;
 
-  // Configuration getters
   double get txPower => _ble.txPower;
   double get pathLoss => _ble.pathLoss;
   int get rssiThreshold => _ble.rssiThreshold;
@@ -52,9 +74,39 @@ class TrackerProvider with ChangeNotifier {
   int get disconnectedCount =>
       _trackers.where((t) => t.status == TrackerStatus.disconnected).length;
 
-  /// Initialize tracker provider and load saved trackers
+  /// EMA + max step so the dashboard does not jump hundreds of meters on one bad RSSI sample.
+  double? _smoothHubDistanceM(String serial, double? rawMeters) {
+    if (rawMeters == null || rawMeters.isNaN || rawMeters.isInfinite) {
+      return rawMeters;
+    }
+    final prev = _distanceEmaBySerial[serial];
+    if (prev == null) {
+      final v = rawMeters.clamp(0.05, 500.0);
+      _distanceEmaBySerial[serial] = v;
+      return v;
+    }
+    var target = rawMeters.clamp(0.05, 500.0);
+    const maxStepM = 14.0;
+    if ((target - prev).abs() > maxStepM) {
+      target = prev + maxStepM * (target > prev ? 1 : -1);
+    }
+    const alpha = 0.22;
+    final next = prev + alpha * (target - prev);
+    _distanceEmaBySerial[serial] = next;
+    return next;
+  }
+
+  List<String> _distinctHubBleIdsForBackground() {
+    final s = <String>{..._savedHubBleIds};
+    for (final t in _trackers) {
+      if (t.bleAddress != null) s.add(t.bleAddress!);
+    }
+    return s.toList();
+  }
+
   Future<void> initialize() async {
     await _loadTrackers();
+    await _loadHubIds();
     print('[TrackerProvider] Initialized with ${_trackers.length} saved tracker(s)');
 
     if (_trackers.isNotEmpty) {
@@ -70,12 +122,11 @@ class TrackerProvider with ChangeNotifier {
     DeviceHeadingStore.ensureStarted();
   }
 
-  /// Load trackers from SharedPreferences
   Future<void> _loadTrackers() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final trackersJson = prefs.getStringList(_trackersStorageKey) ?? [];
-      
+
       _trackers.clear();
       for (final json in trackersJson) {
         try {
@@ -86,7 +137,7 @@ class TrackerProvider with ChangeNotifier {
           print('[TrackerProvider] Error loading tracker: $e');
         }
       }
-      
+
       if (_trackers.isNotEmpty) {
         notifyListeners();
       }
@@ -95,14 +146,39 @@ class TrackerProvider with ChangeNotifier {
     }
   }
 
-  /// Save trackers to SharedPreferences
+  Future<void> _loadHubIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_hubIdsStorageKey) ?? [];
+      _savedHubBleIds
+        ..clear()
+        ..addAll(list);
+      for (final t in _trackers) {
+        if (t.bleAddress != null) {
+          _savedHubBleIds.add(t.bleAddress!);
+        }
+      }
+    } catch (e) {
+      print('[TrackerProvider] Error loading hub ids: $e');
+    }
+  }
+
+  Future<void> _saveHubIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_hubIdsStorageKey, _savedHubBleIds.toList());
+    } catch (e) {
+      print('[TrackerProvider] Error saving hub ids: $e');
+    }
+  }
+
   Future<void> _saveTrackers() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final trackersJson = _trackers
           .map((tracker) => jsonEncode(tracker.toJson()))
           .toList();
-      
+
       await prefs.setStringList(_trackersStorageKey, trackersJson);
       print('[TrackerProvider] Saved ${_trackers.length} tracker(s) to storage');
     } catch (e) {
@@ -118,11 +194,14 @@ class TrackerProvider with ChangeNotifier {
     }
   }
 
-  // ============================================================================
-  // Configuration Methods
-  // ============================================================================
+  Tracker? _trackerBySerial(String? serial) {
+    if (serial == null || serial.isEmpty) return null;
+    for (final t in _trackers) {
+      if (t.serialNumber == serial) return t;
+    }
+    return null;
+  }
 
-  /// Update scanner configuration parameters
   void setScannerConfig({
     double? txPower,
     double? pathLoss,
@@ -136,52 +215,139 @@ class TrackerProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reset scanner configuration to defaults
   void resetScannerConfig() {
     _ble.resetConfig();
     notifyListeners();
   }
 
-  /// Scan for ESP32 Tracker devices via BLE
-  Future<void> scanForTrackers({
-    Duration duration = const Duration(seconds: 5),
-  }) async {
-    _isScanning = true;
-    notifyListeners();
+  /// Serializes hub discovery so concurrent calls (init + pop + refresh) cannot
+  /// corrupt BLE state or leave [_isScanningHubs] stuck true.
+  Future<void> _scanForHubsTail = Future<void>.value();
 
-    try {
-      final scannedTrackers = await _ble.scanForTrackers(
-        scanDuration: duration,
+  /// Stops scans and lets the Android stack settle before connecting to a hub.
+  /// Returns false if BLE permissions are not granted (Android 12+ needs scan/connect).
+  Future<bool> prepareForDedicatedHubSession() async {
+    final ok = await ensureBlePermissions();
+    if (!ok) {
+      print('[TrackerProvider] prepareForDedicatedHubSession: permissions denied');
+      return false;
+    }
+    await stopBackgroundScanning();
+    await stopDedicatedHubStream();
+    await _ble.stopScan();
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    return true;
+  }
+
+  /// Runtime BLE permissions (required on Android 12+ for scan/connect).
+  Future<bool> ensureBlePermissions() async {
+    if (kIsWeb) return false;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final scan = await Permission.bluetoothScan.request();
+      final conn = await Permission.bluetoothConnect.request();
+      if (scan.isGranted && conn.isGranted) {
+        return true;
+      }
+      print(
+        '[TrackerProvider] BLE scan/connect not granted: $scan, $conn — trying location fallback',
       );
-      _pendingTrackers.clear();
-      _pendingTrackers.addAll(scannedTrackers);
-      notifyListeners();
+    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final bt = await Permission.bluetooth.request();
+      if (bt.isGranted) {
+        return true;
+      }
+    }
+    final loc = await Permission.locationWhenInUse.request();
+    return loc.isGranted;
+  }
+
+  /// BLE scan for advertising hubs (user picks one next).
+  Future<void> scanForHubs({
+    Duration duration = const Duration(seconds: 6),
+  }) async {
+    final run =
+        _scanForHubsTail.then((_) => _scanForHubsBody(duration: duration));
+    _scanForHubsTail = run.catchError((Object _) {});
+    await run;
+  }
+
+  Future<void> _scanForHubsBody({
+    required Duration duration,
+  }) async {
+    await stopBackgroundScanning();
+    await stopDedicatedHubStream();
+    await _ble.stopScan();
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+
+    if (!await ensureBlePermissions()) {
+      print('[TrackerProvider] scanForHubs: BLE permissions not granted');
+      return;
+    }
+
+    _isScanningHubs = true;
+    _discoveredHubs = [];
+    notifyListeners();
+
+    try {
+      _discoveredHubs = await _ble
+          .scanForHubs(scanDuration: duration)
+          .timeout(
+            const Duration(seconds: 35),
+            onTimeout: () {
+              print('[TrackerProvider] scanForHubs timed out');
+              return [];
+            },
+          );
     } catch (e) {
-      print('[TrackerProvider] Error scanning: $e');
+      print('[TrackerProvider] scanForHubs error: $e');
     } finally {
-      _isScanning = false;
+      _isScanningHubs = false;
       notifyListeners();
     }
   }
 
-  /// Stop BLE scanning
-  Future<void> stopScanning() async {
-    try {
-      await _ble.stopScan();
-    } catch (e) {
-      print('[TrackerProvider] Error stopping scan: $e');
-    }
-    _isScanning = false;
+  /// Remember that this hub is part of the user's setup (shows in Settings, background rotation).
+  Future<void> rememberHubConnection(String hubBleId) async {
+    if (_savedHubBleIds.contains(hubBleId)) return;
+    _savedHubBleIds.add(hubBleId);
+    await _saveHubIds();
     notifyListeners();
   }
 
-  // ============================================================================
-  // Background Scanning (Dashboard)
-  // ============================================================================
+  /// Remove hub and all trackers tied to it. Frees serials for other hubs.
+  Future<void> removeHubConnection(String hubBleId) async {
+    await stopDedicatedHubStream();
+    await stopBackgroundScanning();
 
-  /// Start continuous background scanning for registered trackers
-  /// Uses continuous BLE scanning like the Python app (always scanning, lives updates)
-  /// No gaps between scans - detection happens in real-time as devices advertise
+    _savedHubBleIds.remove(hubBleId);
+    for (final t in _trackers.where((x) => x.bleAddress == hubBleId)) {
+      if (t.serialNumber != null) {
+        _distanceEmaBySerial.remove(t.serialNumber!);
+      }
+    }
+    _trackers.removeWhere((t) => t.bleAddress == hubBleId);
+    await _saveHubIds();
+    await _saveTrackers();
+
+    if (_trackers.isEmpty) {
+      DeviceHeadingStore.stop();
+    } else {
+      await startBackgroundScanning();
+    }
+    notifyListeners();
+  }
+
+  Future<void> startDedicatedHubStream(
+    String hubBleId,
+    void Function(List<PendingTracker>) onUpdate,
+  ) {
+    return _ble.startDedicatedHubStream(hubBleId, onUpdate);
+  }
+
+  Future<void> stopDedicatedHubStream() {
+    return _ble.stopDedicatedHubStream();
+  }
+
   Future<void> startBackgroundScanning() async {
     if (_isBackgroundScanning || _trackers.isEmpty) {
       if (_trackers.isEmpty) {
@@ -191,17 +357,14 @@ class TrackerProvider with ChangeNotifier {
     }
 
     _isBackgroundScanning = true;
-    print('[TrackerProvider] ✓ Starting continuous background scanning for ${_trackers.length} registered tracker(s)');
-    print('[TrackerProvider] Registered trackers: ${_trackers.map((t) => t.serialNumber).join(', ')}');
+    print('[TrackerProvider] ✓ Background hub rotation for ${_trackers.length} tracker(s)');
 
     try {
-      // Start continuous scanning with live callbacks
-      // This matches the Python app behavior: scanner runs continuously
       await _ble.startContinuousScanning(
         onTrackerUpdate: _onContinuousScanUpdate,
+        hubBleIds: _distinctHubBleIdsForBackground,
       );
-      
-      // Start offline check timer - checks every 2 seconds if any trackers went offline
+
       _offlineCheckTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
         _checkForOfflineTrackers();
       });
@@ -212,7 +375,6 @@ class TrackerProvider with ChangeNotifier {
     }
   }
 
-  /// Check if any trackers haven't been detected for too long and mark them offline
   void _checkForOfflineTrackers() {
     final now = DateTime.now();
     var statusChanged = false;
@@ -221,8 +383,8 @@ class TrackerProvider with ChangeNotifier {
       final tracker = _trackers[i];
       final timeSinceLastSeen = now.difference(tracker.lastSeen).inSeconds;
 
-      // If tracker hasn't been seen for 8+ seconds, mark as disconnected
-      if (timeSinceLastSeen > _offlineThresholdSeconds && tracker.status != TrackerStatus.disconnected) {
+      if (timeSinceLastSeen > _offlineThresholdSeconds &&
+          tracker.status != TrackerStatus.disconnected) {
         print('[TrackerProvider] Marking "${tracker.name}" as offline (last seen ${timeSinceLastSeen}s ago)');
         _trackers[i] = tracker.copyWith(status: TrackerStatus.disconnected);
         statusChanged = true;
@@ -234,36 +396,28 @@ class TrackerProvider with ChangeNotifier {
     }
   }
 
-  /// Handle continuous scan updates from BLE service
-  /// Called whenever devices are detected during continuous scanning
   void _onContinuousScanUpdate(List<PendingTracker> scannedTrackers) {
     if (scannedTrackers.isEmpty) {
-      print('[TrackerProvider] Scan callback received with 0 trackers');
       return;
     }
 
-    print('[TrackerProvider] Scan callback: got ${scannedTrackers.length} tracker(s)');
     var updated = false;
 
     for (final scanned in scannedTrackers) {
-      final distanceStr = scanned.distance != null ? scanned.distance!.toStringAsFixed(2) : 'null';
-      final filteredRssiStr = scanned.rssiFiltered != null ? scanned.rssiFiltered!.toStringAsFixed(1) : 'null';
-      print('[TrackerProvider] Processing scanned: ${scanned.serialNumber}, RSSI: ${scanned.rssi}, Filtered: $filteredRssiStr, Distance: ${distanceStr}m');
-      
-      // Find matching registered tracker by serial number
       final index = _trackers.indexWhere(
         (t) => t.serialNumber == scanned.serialNumber,
       );
 
       if (index != -1) {
         final tracker = _trackers[index];
-        print('[TrackerProvider]   ✓ Found registered tracker: "${tracker.name}"');
-
-        // Update RSSI and distance in real-time
+        final serial = tracker.serialNumber ?? '';
+        final dist = serial.isNotEmpty
+            ? _smoothHubDistanceM(serial, scanned.distance)
+            : scanned.distance;
         var updatedTracker = tracker.copyWith(
           rssi: scanned.rssi,
           rssiFiltered: scanned.rssiFiltered,
-          distance: scanned.distance,
+          distance: dist,
           lastSeen: DateTime.now(),
           signalStrength: scanned.signalStrength,
           status: TrackerStatus.connected,
@@ -276,24 +430,15 @@ class TrackerProvider with ChangeNotifier {
             updatedTracker.tagCompassBearingDeg != null) {
           unawaited(_saveTrackers());
         }
-        final oldDistanceStr = tracker.distance != null ? tracker.distance!.toStringAsFixed(2) : 'null';
-        final newDistanceStr = updatedTracker.distance != null ? updatedTracker.distance!.toStringAsFixed(2) : 'null';
-        print('[TrackerProvider]   Updated "${tracker.name}": Distance ${oldDistanceStr}m → ${newDistanceStr}m');
         updated = true;
-      } else {
-        print('[TrackerProvider]   ✗ No registered tracker found for ${scanned.serialNumber}');
       }
     }
 
     if (updated) {
-      print('[TrackerProvider] Notifying listeners');
       notifyListeners();
     }
   }
 
-  /// BLE has no angle-of-arrival; when the tag is **very** close (or RSSI is very strong),
-  /// we assume the phone top is roughly aimed at it and lock [Tracker.tagCompassBearingDeg]
-  /// to the current fused heading once.
   Tracker _applyProximityAutoTagBearing(Tracker t) {
     if (t.tagCompassBearingDeg != null) return t;
 
@@ -322,13 +467,11 @@ class TrackerProvider with ChangeNotifier {
     return t;
   }
 
-  /// Stop continuous background scanning
   Future<void> stopBackgroundScanning() async {
     if (!_isBackgroundScanning) return;
 
     _isBackgroundScanning = false;
 
-    // Cancel offline check timer
     _offlineCheckTimer?.cancel();
     _offlineCheckTimer = null;
 
@@ -342,34 +485,28 @@ class TrackerProvider with ChangeNotifier {
     notifyListeners();
   }
 
-
-
-  // ============================================================================
-  // Ping Feature
-  // ============================================================================
-
-  /// Ping a tracker device via BLE GATT
-  /// Returns true if ping succeeded, false otherwise
-  /// Prevents multiple simultaneous pings to the same device
   Future<bool> pingTracker(String trackerId) async {
     final tracker = getTracker(trackerId);
-    if (tracker == null || tracker.bleAddress == null) {
-      print('[TrackerProvider] Cannot ping: tracker not found or no BLE address');
+    if (tracker == null ||
+        tracker.bleAddress == null ||
+        tracker.serialNumber == null) {
+      print('[TrackerProvider] Cannot ping: missing hub BLE address or serial');
       return false;
     }
 
-    // Prevent multiple simultaneous pings to the same device
     if (_pingingDevices.contains(trackerId)) {
       print('[TrackerProvider] Already pinging ${tracker.name}, please wait...');
       return false;
     }
 
-    // Mark device as currently pinging
     _pingingDevices.add(trackerId);
 
     try {
-      print('[TrackerProvider] Pinging tracker: ${tracker.name}');
-      final success = await _ble.pingDevice(tracker.bleAddress!);
+      print('[TrackerProvider] Pinging tracker via hub: ${tracker.name}');
+      final success = await _ble.pingTrackerOnHub(
+        hubBleAddress: tracker.bleAddress!,
+        serialNumber: tracker.serialNumber!,
+      );
 
       if (success) {
         print('[TrackerProvider] ✓ Ping successful for ${tracker.name}');
@@ -378,33 +515,21 @@ class TrackerProvider with ChangeNotifier {
         return false;
       }
 
-      // Wait for device GATT state to fully reset + safety margin
-      // Device disables GATT for ~3 seconds after ping, wait 4.2s to ensure full recovery
-      print('[TrackerProvider] Waiting for device GATT recovery (4.2s)...');
-      await Future.delayed(const Duration(milliseconds: 4200));
-
       return true;
     } catch (e) {
       print('[TrackerProvider] Ping error: $e');
       return false;
     } finally {
-      // Remove device from pinging set
       _pingingDevices.remove(trackerId);
       print('[TrackerProvider] Ping operation complete for ${tracker.name}');
     }
   }
 
-  // ============================================================================
-  // Tracker Management Methods
-  // ============================================================================
-
-  /// Rename a registered tracker device
   void renameTracker(String id, String newName) {
     final index = _trackers.indexWhere((t) => t.id == id);
     if (index != -1) {
       _trackers[index] = _trackers[index].copyWith(name: newName);
 
-      // Also update name in any related alerts
       for (var i = 0; i < _alerts.length; i++) {
         if (_alerts[i].trackerId == id) {
           _alerts[i] = _alerts[i].copyWith(trackerName: newName);
@@ -412,7 +537,7 @@ class TrackerProvider with ChangeNotifier {
       }
 
       notifyListeners();
-      _saveTrackers();  // Persist rename
+      _saveTrackers();
     }
   }
 
@@ -422,8 +547,6 @@ class TrackerProvider with ChangeNotifier {
     return v;
   }
 
-  /// Saves magnetic bearing to the tag (0–360°, CW from north). Call while the
-  /// **top edge of the phone** points at the tag; [bearingDeg] is the live compass heading.
   Future<void> setTrackerTagCompassBearing(String id, double bearingDeg) async {
     final index = _trackers.indexWhere((t) => t.id == id);
     if (index == -1) return;
@@ -443,12 +566,31 @@ class TrackerProvider with ChangeNotifier {
     await _saveTrackers();
   }
 
-  /// Register a discovered BLE device as an active tracker
-  Future<void> registerDevice(PendingTracker pendingTracker, String name) async {
-    // Generate a unique ID
+  /// Register a tag discovered on [expectedHubBleId]. Serial is unique app-wide per hub ownership rules.
+  Future<SerialRegistrationOutcome> registerDeviceOnHub(
+    PendingTracker pendingTracker,
+    String name,
+    String expectedHubBleId,
+  ) async {
+    final serial = pendingTracker.serialNumber;
+    if (serial == null || serial.isEmpty) {
+      return SerialRegistrationOutcome.invalid;
+    }
+    if (pendingTracker.bleAddress != null &&
+        pendingTracker.bleAddress != expectedHubBleId) {
+      return SerialRegistrationOutcome.invalid;
+    }
+
+    final existing = _trackerBySerial(serial);
+    if (existing != null) {
+      if (existing.bleAddress == expectedHubBleId) {
+        return SerialRegistrationOutcome.duplicateOnThisHub;
+      }
+      return SerialRegistrationOutcome.blockedOtherHub;
+    }
+
     final newId = _uuid.v4();
 
-    // Use filtered RSSI if available, otherwise calculate from raw RSSI
     final rssiValue = pendingTracker.rssi;
     final rssiFilteredValue = pendingTracker.rssiFiltered ?? rssiValue?.toDouble();
     final distance = pendingTracker.distance ??
@@ -461,39 +603,48 @@ class TrackerProvider with ChangeNotifier {
       status: TrackerStatus.connected,
       signalStrength: pendingTracker.signalStrength,
       lastSeen: pendingTracker.discovered,
-      batteryLevel: 100, // Default for new registration
-      // BLE fields
+      batteryLevel: 100,
       rssi: rssiValue,
       rssiFiltered: rssiFilteredValue,
       distance: distance,
       serialNumber: pendingTracker.serialNumber,
-      bleAddress: pendingTracker.bleAddress,
+      bleAddress: expectedHubBleId,
     );
 
-    // Remove from pending
-    _pendingTrackers.removeWhere((p) => p.deviceId == pendingTracker.deviceId);
-
-    // Add to registered
     _trackers.add(newTracker);
-    print('[TrackerProvider] ✓ Registered device: "$name" (${pendingTracker.serialNumber})');
-    print('[TrackerProvider] Total trackers: ${_trackers.length}');
+    await rememberHubConnection(expectedHubBleId);
+
+    print('[TrackerProvider] ✓ Registered device: "$name" ($serial) on hub $expectedHubBleId');
     notifyListeners();
 
     await _ensureHeadingForTracking();
 
-    // Persist to storage
     await _saveTrackers();
+
+    return SerialRegistrationOutcome.success;
   }
 
   Future<void> unregisterTracker(String id) async {
+    final t = getTracker(id);
     _autoBearingCloseStreak.remove(id);
-    _trackers.removeWhere((t) => t.id == id);
+    if (t?.serialNumber != null) {
+      _distanceEmaBySerial.remove(t!.serialNumber!);
+    }
+    _trackers.removeWhere((x) => x.id == id);
+
+    // Keep hub BLE ids in Connections until the user removes the hub explicitly
+    // (Settings / Remove hub). Deleting trackers alone should not drop the hub
+    // from prefs or confuse the next Add trackers / BLE session.
+
     if (_trackers.isEmpty) {
       DeviceHeadingStore.stop();
+      await stopBackgroundScanning();
+      await stopDedicatedHubStream();
+      await _ble.stopScan();
     }
+
     notifyListeners();
 
-    // Persist to storage
     await _saveTrackers();
   }
 
@@ -520,12 +671,9 @@ class TrackerProvider with ChangeNotifier {
     }
   }
 
-  /// Refresh tracker data (simulate data update from BLE)
   void refreshTrackers() {
-    // Simulate updating tracker statuses
     for (var i = 0; i < _trackers.length; i++) {
       final tracker = _trackers[i];
-      // Update last seen timestamp
       _trackers[i] = tracker.copyWith(lastSeen: DateTime.now());
     }
     notifyListeners();

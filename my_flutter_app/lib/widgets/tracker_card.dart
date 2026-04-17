@@ -9,7 +9,14 @@ import 'package:provider/provider.dart';
 class TrackerCard extends StatefulWidget {
   final Tracker tracker;
 
-  const TrackerCard({super.key, required this.tracker});
+  /// When true, top corners are square so the card can sit flush under a header.
+  final bool flatTop;
+
+  const TrackerCard({
+    super.key,
+    required this.tracker,
+    this.flatTop = false,
+  });
 
   @override
   State<TrackerCard> createState() => _TrackerCardState();
@@ -28,39 +35,42 @@ class _TrackerCardState extends State<TrackerCard> {
   }
 
   Future<void> _handlePing() async {
+    final provider = context.read<TrackerProvider>();
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final trackerId = widget.tracker.id;
+    final fallbackName = widget.tracker.name;
+
     setState(() {
       _isPinging = true;
     });
 
     try {
-      final success =
-          await context.read<TrackerProvider>().pingTracker(widget.tracker.id);
+      final success = await provider.pingTracker(trackerId);
 
-      if (mounted) {
-        final name = _displayTracker(context).name;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              success
-                  ? 'Ping successful for $name'
-                  : 'Failed to ping $name',
-            ),
-            duration: const Duration(seconds: 3),
-            backgroundColor:
-                success ? Colors.green.shade600 : Colors.red.shade600,
+      if (!mounted) return;
+      final name =
+          provider.getTracker(trackerId)?.name ?? fallbackName;
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Ping successful for $name'
+                : 'Failed to ping $name',
           ),
-        );
-      }
+          duration: const Duration(seconds: 3),
+          backgroundColor:
+              success ? Colors.green.shade600 : Colors.red.shade600,
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error pinging device: $e'),
-            duration: const Duration(seconds: 3),
-            backgroundColor: Colors.red.shade600,
-          ),
-        );
-      }
+      if (!mounted) return;
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text('Error pinging device: $e'),
+          duration: const Duration(seconds: 3),
+          backgroundColor: Colors.red.shade600,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -159,15 +169,28 @@ class _TrackerCardState extends State<TrackerCard> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
+    final shape = RoundedRectangleBorder(
+      borderRadius: widget.flatTop
+          ? const BorderRadius.only(
+              bottomLeft: Radius.circular(18),
+              bottomRight: Radius.circular(18),
+            )
+          : BorderRadius.circular(18),
+      side: BorderSide(color: colorScheme.outlineVariant),
+    );
+
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: colorScheme.outlineVariant),
-      ),
+      color: theme.cardColor,
+      shape: shape,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: widget.flatTop
+            ? const BorderRadius.only(
+                bottomLeft: Radius.circular(18),
+                bottomRight: Radius.circular(18),
+              )
+            : BorderRadius.circular(18),
         onTap: () {
           HapticFeedback.lightImpact();
           context.push('/tracker/${tracker.id}');
