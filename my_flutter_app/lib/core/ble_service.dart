@@ -1,42 +1,48 @@
-import 'dart:math' as math;
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:my_flutter_app/core/kalman_filter.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 
 // ============================================================================
-// Configuration Constants
+// Hub + tracker protocol (esp_hubBLEWifi_trackerWifi / esp32_hub.ino)
 // ============================================================================
 
-/// TX Power at 1 meter in dBm (device transmit power)
+/// Hub GAP name (BLE advertising)
+const String hubBleGapName = 'ESP32_TRACKER_HUB';
+
+/// Nordic UART–style service used by the hub
+const String hubServiceUuidStr = '6E400001-B5A3-F393-E0A9-E50E24DCCA9E';
+const String hubRxUuidStr = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E';
+const String hubTxUuidStr = '6E400003-B5A3-F393-E0A9-E50E24DCCA9E';
+
+final Guid hubServiceGuid = Guid(hubServiceUuidStr);
+
+/// Telemetry line from hub TX notifications:
+/// `TRACKER:esp32_indiv:<serial>:RSSI:<rssi>:DISTANCE:<meters>:IP:<ip>`
+final RegExp _hubTrackerLine = RegExp(
+  r'^TRACKER:esp32_indiv:([^:]+):RSSI:(-?\d+):DISTANCE:([\d.]+):IP:([0-9.]+)\s*$',
+);
+
+// ============================================================================
+// Configuration (distance fallbacks when only RSSI is available)
+// ============================================================================
+
 const double TX_POWER_DBM = -65;
-
-/// Path loss exponent (free space = 2.0, indoor = 2.5-3.5)
 const double FREE_SPACE_PATH_LOSS = 2.0;
-
-/// RSSI threshold for filtering weak signals
 const int RSSI_THRESHOLD = -100;
-
-/// Scan duration in seconds
-const double SCAN_DURATION = 5.0;
-
-/// Display/UI update interval in seconds
-const double DISPLAY_INTERVAL = 1.0;
-
-/// Minimum and maximum distance bounds in meters
 const double MIN_DISTANCE_M = 0.1;
 const double MAX_DISTANCE_M = 9999;
 
-/// Kalman Filter Parameters
 const double KALMAN_PROCESS_NOISE = 0.01;
 const double KALMAN_MEASUREMENT_NOISE = 2.5;
 const double KALMAN_INITIAL_UNCERTAINTY = 10.0;
 
 // ============================================================================
-// Tracker Data Structure
+// Tracker Data (Kalman on RSSI; distance from hub when present)
 // ============================================================================
 
-/// Stores detected tracker information with Kalman filtering
 class TrackerData {
   final String deviceId;
   final String serialNumber;
@@ -64,44 +70,79 @@ class TrackerData {
           initialUncertainty: KALMAN_INITIAL_UNCERTAINTY,
         );
 
-  /// Update tracker with new RSSI measurement
   void updateRssi(int newRssi) {
     rssi = newRssi;
     rssiFiltered = kalmanFilter.update(newRssi.toDouble());
     lastUpdated = DateTime.now();
-
-    // Keep history for graphing (max 100 points)
     if (rssiHistory.length > 100) {
       rssiHistory.removeAt(0);
     }
     rssiHistory.add(rssiFiltered);
   }
 
-  /// Update distance based on filtered RSSI
   void updateDistance(double newDistance) {
     distance = newDistance;
   }
 }
 
-/// BLE Service - Manages Bluetooth Low Energy device scanning
-/// Note: flutter_blue_plus package not yet installed in pubspec.yaml
-/// Using mock implementation for MVP development
+/// One discoverable hub from a BLE scan (deduped by [remoteId]).
+class DiscoveredHub {
+  DiscoveredHub({
+    required this.remoteId,
+    required this.displayName,
+    required this.rssi,
+  });
+
+  final String remoteId;
+  final String displayName;
+  final int rssi;
+}
+
+/// BLE: connect to hub(s), consume TX notifications, parse tracker lines.
 class BleService {
   static final BleService _instance = BleService._internal();
 
-  // Configuration parameters
   double _txPower = TX_POWER_DBM;
   double _pathLoss = FREE_SPACE_PATH_LOSS;
   int _rssiThreshold = RSSI_THRESHOLD;
 
-  // Active tracker data during scanning
   final Map<String, TrackerData> _activeTrackers = {};
-  
-  // Continuous scanning state
+
   bool _isContinuousScanRunning = false;
   Function(List<PendingTracker>)? _continuousScanCallback;
-  Timer? _continuousScanTimer;
-  StreamSubscription? _scanSubscription;
+  List<String> Function()? _backgroundHubIds;
+
+  bool _dedicatedHubActive = false;
+  Future<void>? _dedicatedHubFuture;
+
+  StreamSubscription<List<int>>? _hubNotifySubscription;
+  StreamSubscription<BluetoothConnectionState>? _hubConnectionSubscription;
+  Future<void>? _hubSessionFuture;
+  String _hubLineBuffer = '';
+
+  BluetoothDevice? _connectedHub;
+  BluetoothCharacteristic? _hubRx;
+  BluetoothCharacteristic? _hubTx;
+
+  /// flutter_blue_plus enforces ~2s between GATT connects per device on Android.
+  final Map<String, DateTime> _lastTransientHubDisconnectUtc = {};
+  Future<void> _pingSerialTail = Future<void>.value();
+
+  static const Duration _hubPingBleGap = Duration(milliseconds: 2200);
+
+  Future<void> _waitTransientHubPingGap(String hubBleAddress) async {
+    final key = hubBleAddress.trim();
+    final last = _lastTransientHubDisconnectUtc[key];
+    if (last == null) return;
+    final elapsed = DateTime.now().difference(last);
+    if (elapsed < _hubPingBleGap) {
+      await Future<void>.delayed(_hubPingBleGap - elapsed);
+    }
+  }
+
+  void _markTransientHubDisconnected(String hubBleAddress) {
+    _lastTransientHubDisconnectUtc[hubBleAddress.trim()] = DateTime.now();
+  }
 
   factory BleService() {
     return _instance;
@@ -109,20 +150,10 @@ class BleService {
 
   BleService._internal();
 
-  // ============================================================================
-  // Configuration Methods
-  // ============================================================================
-
-  /// Get current TX power setting
   double get txPower => _txPower;
-
-  /// Get current path loss exponent setting
   double get pathLoss => _pathLoss;
-
-  /// Get current RSSI threshold setting
   int get rssiThreshold => _rssiThreshold;
 
-  /// Update scanner configuration
   void setConfig({
     double? txPower,
     double? pathLoss,
@@ -133,50 +164,39 @@ class BleService {
     if (rssiThreshold != null) _rssiThreshold = rssiThreshold;
   }
 
-  /// Reset configuration to defaults
   void resetConfig() {
     _txPower = TX_POWER_DBM;
     _pathLoss = FREE_SPACE_PATH_LOSS;
     _rssiThreshold = RSSI_THRESHOLD;
   }
 
-  // ============================================================================
-  // Device Parsing & Distance Calculation
-  // ============================================================================
+  static bool uuidEquals(Guid a, String b) =>
+      a.toString().toLowerCase() == b.toLowerCase();
 
-  /// Parse device name to extract ESP32 tracker info
-  /// Expected format: esp32_indiv_[SERIAL_NUMBER]
-  /// Example: esp32_indiv_03F2 → ("esp32_indiv", "03F2")
+  /// Legacy: direct tracker advertisement name (BLE-only trackers).
   static ({String deviceId, String serialNumber})? parseDeviceName(String? name) {
-    if (name == null || !name.startsWith("esp32_indiv_")) {
+    if (name == null || !name.startsWith('esp32_indiv_')) {
       return null;
     }
-
-    final deviceId = "esp32_indiv";
-    final serialNumber = name.substring(12); // Everything after "esp32_indiv_"
-
-    if (serialNumber.isEmpty) {
-      return null;
-    }
-
-    return (deviceId: deviceId, serialNumber: serialNumber);
+    const prefix = 'esp32_indiv_';
+    final serialNumber = name.substring(prefix.length);
+    if (serialNumber.isEmpty) return null;
+    return (deviceId: 'esp32_indiv', serialNumber: serialNumber);
   }
 
-  /// Calculate distance from RSSI using Free Space Path Loss model
-  /// Formula: distance (m) = 10^((TX_POWER - RSSI) / (10 * PATH_LOSS))
-  static double calculateDistance(int rssi, {
+  static double calculateDistance(
+    int rssi, {
     double txPower = TX_POWER_DBM,
     double pathLoss = FREE_SPACE_PATH_LOSS,
     double minDistance = MIN_DISTANCE_M,
     double maxDistance = MAX_DISTANCE_M,
   }) {
     if (rssi == 0) return 0.0;
-
-    final distance = math.pow(10.0, (txPower - rssi) / (10 * pathLoss)).toDouble();
+    final distance =
+        math.pow(10.0, (txPower - rssi) / (10 * pathLoss)).toDouble();
     return distance.clamp(minDistance, maxDistance);
   }
 
-  /// Calculate distance using current instance configuration
   double calculateDistanceWithConfig(int rssi) {
     return calculateDistance(
       rssi,
@@ -185,399 +205,640 @@ class BleService {
     );
   }
 
-  /// Scan for ESP32 tracker devices via BLE
-  /// Uses flutter_blue_plus to perform actual BLE scanning
-  /// Applies Kalman filtering and RSSI threshold filtering
-  /// Returns a list of discovered PendingTracker objects
-  Future<List<PendingTracker>> scanForTrackers({
-    Duration scanDuration = const Duration(seconds: 5),
+  static bool scanResultIsHub(ScanResult r) {
+    final adv =
+        r.device.advName.isNotEmpty ? r.device.advName : r.device.platformName;
+    final plat = r.device.platformName;
+    if (adv == hubBleGapName || plat == hubBleGapName) {
+      return true;
+    }
+    if (adv.contains('TRACKER_HUB')) {
+      return true;
+    }
+    for (final u in r.advertisementData.serviceUuids) {
+      if (uuidEquals(u, hubServiceUuidStr)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static Map<String, String>? parseHubTrackerLine(String line) {
+    final m = _hubTrackerLine.firstMatch(line.trim());
+    if (m == null) return null;
+    final serial = m.group(1)!;
+    if (serial == 'BOOT') return null;
+    return {
+      'serial': serial,
+      'rssi': m.group(2)!,
+      'distance': m.group(3)!,
+      'ip': m.group(4)!,
+    };
+  }
+
+  ({BluetoothCharacteristic rx, BluetoothCharacteristic tx})?
+      _findUartCharacteristics(List<BluetoothService> services) {
+    BluetoothCharacteristic? rx;
+    BluetoothCharacteristic? tx;
+    for (final s in services) {
+      if (!uuidEquals(s.uuid, hubServiceUuidStr)) continue;
+      for (final c in s.characteristics) {
+        if (uuidEquals(c.uuid, hubRxUuidStr)) {
+          rx = c;
+        } else if (uuidEquals(c.uuid, hubTxUuidStr)) {
+          tx = c;
+        }
+      }
+    }
+    if (rx == null || tx == null) return null;
+    return (rx: rx, tx: tx);
+  }
+
+  void _appendHubPayload(
+    List<int> value,
+    void Function(Map<String, String> parsed) onParsed,
+  ) {
+    _hubLineBuffer += utf8.decode(value, allowMalformed: true);
+    int nl;
+    while ((nl = _hubLineBuffer.indexOf('\n')) >= 0) {
+      final line = _hubLineBuffer.substring(0, nl);
+      _hubLineBuffer = _hubLineBuffer.substring(nl + 1);
+      final parsed = parseHubTrackerLine(line);
+      if (parsed != null) {
+        onParsed(parsed);
+      }
+    }
+  }
+
+  void _processParsedForPending(
+    Map<String, String> parsed,
+    String hubBleId,
+    List<PendingTracker> batch,
+  ) {
+    final serial = parsed['serial']!;
+    final rssi = int.tryParse(parsed['rssi'] ?? '') ?? -100;
+    final distFromHub = double.tryParse(parsed['distance'] ?? '') ??
+        calculateDistanceWithConfig(rssi);
+
+    // RSSI here is WiFi (tag↔hub AP), not phone BLE. Do not use the BLE scan
+    // threshold (-100 dBm) or marginal links (-101, etc.) are dropped entirely.
+
+    final trackerData = _activeTrackers.putIfAbsent(
+      serial,
+      () => TrackerData(
+        deviceId: 'esp32_indiv',
+        serialNumber: serial,
+        bleAddress: hubBleId,
+        initialRssi: rssi,
+        initialDistance: distFromHub,
+      ),
+    );
+
+    trackerData.updateRssi(rssi);
+    trackerData.updateDistance(distFromHub);
+
+    final signalStrength =
+        (100 + trackerData.rssiFiltered).clamp(0.0, 100.0).toInt();
+
+    batch.removeWhere((p) => p.serialNumber == serial);
+    batch.add(
+      PendingTracker(
+        deviceId: 'esp32_indiv',
+        signalStrength: signalStrength,
+        discovered: DateTime.now(),
+        serialNumber: serial,
+        bleAddress: hubBleId,
+        rssi: rssi,
+        rssiFiltered: trackerData.rssiFiltered,
+        distance: trackerData.distance,
+        rssiHistory: List.from(trackerData.rssiHistory),
+      ),
+    );
+  }
+
+  /// Scan for all advertising hubs (deduped by device id, strongest RSSI kept).
+  Future<List<DiscoveredHub>> scanForHubs({
+    Duration scanDuration = const Duration(seconds: 6),
   }) async {
+    final out = <String, ScanResult>{};
     try {
-      // Clear previous tracking data
-      _activeTrackers.clear();
+      try {
+        await FlutterBluePlus.stopScan();
+      } catch (_) {}
+      await Future<void>.delayed(const Duration(milliseconds: 150));
 
-      // Check Bluetooth availability
-      if (!await isBluetoothAvailable()) {
-        print('[BleService] Bluetooth not available');
+      if (!await isBluetoothAvailable() || !await isBluetoothOn()) {
         return [];
       }
 
-      // Check Bluetooth is enabled
-      if (!await isBluetoothOn()) {
-        print('[BleService] Bluetooth is off');
-        return [];
-      }
-
-      print('[BleService] Starting BLE scan for ${scanDuration.inSeconds}s...');
-      
-      final result = <PendingTracker>[];
-
-      // Start listening to scan results BEFORE starting the scan
-      final scanSubscription = FlutterBluePlus.onScanResults.listen(
-        (scanResults) {
-          print('[BleService] Got ${scanResults.length} scan results');
-
-          for (final scanResult in scanResults) {
-            final device = scanResult.device;
-
-            // Get device name (prefer advName if available)
-            final name = device.advName.isNotEmpty ? device.advName : device.name;
-            final rssi = scanResult.rssi;
-            final address = device.remoteId.toString();
-
-            // Debug: Log all found devices
-            if (name.isNotEmpty) {
-              print('[BleService] Device: "$name", RSSI: $rssi, Address: $address');
-            }
-
-            // Parse device name for ESP32 trackers
-            final parsed = parseDeviceName(name);
-            if (parsed == null) {
-              continue;
-            }
-
-            final (deviceId: deviceId, serialNumber: serialNumber) = parsed;
-
-            print('[BleService] ✓ Matched ESP32: $serialNumber, RSSI: $rssi dBm');
-
-            // Filter by RSSI threshold
-            if (rssi < _rssiThreshold) {
-              print('[BleService] RSSI $rssi below threshold $_rssiThreshold, skipping');
-              continue;
-            }
-
-            // Store or update tracker data with Kalman filtering
-            final trackerData = _activeTrackers.putIfAbsent(
-              serialNumber,
-              () => TrackerData(
-                deviceId: deviceId,
-                serialNumber: serialNumber,
-                bleAddress: address,
-                initialRssi: rssi,
-                initialDistance: calculateDistanceWithConfig(rssi),
-              ),
-            );
-
-            // Update with new measurement (applies Kalman filtering)
-            trackerData.updateRssi(rssi);
-            trackerData.updateDistance(
-              calculateDistanceWithConfig(rssi),
-            );
-
-            // Calculate signal strength percentage from filtered RSSI
-            final signalStrength =
-                (100 + trackerData.rssiFiltered).clamp(0.0, 100.0).toInt();
-            final distance = trackerData.distance;
-
-            // Only add unique devices (latest data)
-            result.removeWhere((p) => p.serialNumber == serialNumber);
-            result.add(
-              PendingTracker(
-                deviceId: deviceId,
-                signalStrength: signalStrength,
-                discovered: DateTime.now(),
-                serialNumber: serialNumber,
-                bleAddress: address,
-                rssi: rssi,
-                rssiFiltered: trackerData.rssiFiltered,
-                distance: distance,
-                rssiHistory: List.from(trackerData.rssiHistory),
-              ),
-            );
-
-            print('[BleService] Added/updated: $serialNumber (Signal: $signalStrength%, Distance: ${distance.toStringAsFixed(2)}m)');
-          }
-        },
-        onError: (e) {
-          print('[BleService] Scan stream error: $e');
-        },
-      );
-
-      // Start scanning (uses timeout to control duration)
       await FlutterBluePlus.startScan(
         timeout: scanDuration,
         continuousUpdates: true,
       );
+      await Future.delayed(scanDuration + const Duration(milliseconds: 150));
+      await FlutterBluePlus.stopScan();
 
-      // Wait for the scan to complete (startScan with timeout handles this)
-      // but we keep the listener alive during scanning
-      await Future.delayed(scanDuration + const Duration(milliseconds: 100));
+      for (final r in FlutterBluePlus.lastScanResults) {
+        if (!scanResultIsHub(r)) continue;
+        final id = r.device.remoteId.toString();
+        if (!out.containsKey(id) || r.rssi > out[id]!.rssi) {
+          out[id] = r;
+        }
+      }
 
-      // Cancel subscription
-      await scanSubscription.cancel();
+      final list = out.values.map((r) {
+        final name = r.device.advName.isNotEmpty
+            ? r.device.advName
+            : r.device.platformName;
+        return DiscoveredHub(
+          remoteId: r.device.remoteId.toString(),
+          displayName: name.isNotEmpty ? name : hubBleGapName,
+          rssi: r.rssi,
+        );
+      }).toList()
+        ..sort((a, b) => b.rssi.compareTo(a.rssi));
 
-      print('[BleService] Scan complete. Found ${_activeTrackers.length} ESP32 trackers.');
-      return result;
+      return list;
     } catch (e) {
-      print('[BleService] Error scanning: $e');
+      print('[BleService] scanForHubs error: $e');
       return [];
     }
   }
 
-  /// Stop BLE scanning
+  Future<void> _disconnectHub() async {
+    await _hubNotifySubscription?.cancel();
+    _hubNotifySubscription = null;
+    await _hubConnectionSubscription?.cancel();
+    _hubConnectionSubscription = null;
+    _hubLineBuffer = '';
+    if (_connectedHub != null && _connectedHub!.isConnected) {
+      try {
+        await _connectedHub!.disconnect();
+      } catch (_) {}
+    }
+    _connectedHub = null;
+    _hubRx = null;
+    _hubTx = null;
+  }
+
+  /// One-shot: connect to [hubBleId], collect tracker lines, disconnect.
+  Future<List<PendingTracker>> scanTrackersOnHub({
+    required String hubBleId,
+    Duration listenDuration = const Duration(seconds: 5),
+  }) async {
+    try {
+      _activeTrackers.clear();
+
+      if (!await isBluetoothAvailable() || !await isBluetoothOn()) {
+        return [];
+      }
+
+      final hub = BluetoothDevice.fromId(hubBleId);
+      await hub.connect(
+        timeout: const Duration(seconds: 15),
+        mtu: 512,
+      );
+
+      final services = await hub.discoverServices();
+      final pair = _findUartCharacteristics(services);
+      if (pair == null) {
+        await hub.disconnect();
+        return [];
+      }
+
+      await pair.tx.setNotifyValue(true);
+      final result = <PendingTracker>[];
+
+      final sub = pair.tx.onValueReceived.listen((value) {
+        _appendHubPayload(value, (parsed) {
+          _processParsedForPending(parsed, hubBleId, result);
+        });
+      });
+
+      hub.cancelWhenDisconnected(sub);
+
+      await Future.delayed(listenDuration);
+
+      await sub.cancel();
+      await hub.disconnect();
+
+      return result;
+    } catch (e) {
+      print('[BleService] scanTrackersOnHub error: $e');
+      return [];
+    }
+  }
+
   Future<void> stopScan() async {
     try {
       await FlutterBluePlus.stopScan();
-      print('[BleService] Scan stopped');
     } catch (e) {
       print('[BleService] Error stopping scan: $e');
     }
   }
 
-  /// Start continuous background scanning with live updates (like the Python app)
-  /// Scans in 1-second cycles continuously, mimicking Python's behavior
-  /// Each cycle: start scan → get live callbacks → stop → restart
   Future<void> startContinuousScanning({
     required Function(List<PendingTracker>) onTrackerUpdate,
+    required List<String> Function() hubBleIds,
   }) async {
+    // If rotation is already running, return without touching the connection.
+    // (Calling [stopDedicatedHubStream] here would disconnect the active
+    // background session, then we'd hit this guard and return — leaving BLE dead
+    // and no hub telemetry on the dashboard.)
     if (_isContinuousScanRunning) {
-      print('[BleService] Continuous scanning already running');
       return;
     }
 
-    try {
-      // Check Bluetooth availability
-      if (!await isBluetoothAvailable()) {
-        print('[BleService] Bluetooth not available');
-        return;
+    // End any dedicated add-trackers session before starting background rotation.
+    await stopDedicatedHubStream();
+
+    if (!await isBluetoothAvailable() || !await isBluetoothOn()) {
+      return;
+    }
+
+    _isContinuousScanRunning = true;
+    _continuousScanCallback = onTrackerUpdate;
+    _backgroundHubIds = hubBleIds;
+    _activeTrackers.clear();
+
+    _hubSessionFuture = _runBackgroundHubRotationLoop();
+    print('[BleService] Multi-hub background session started');
+  }
+
+  Future<void> _runBackgroundHubRotationLoop() async {
+    while (_isContinuousScanRunning) {
+      final ids = _backgroundHubIds?.call() ?? [];
+      if (ids.isEmpty) {
+        await Future.delayed(const Duration(seconds: 2));
+        continue;
       }
 
-      if (!await isBluetoothOn()) {
-        print('[BleService] Bluetooth is off');
-        return;
+      for (final hubId in ids) {
+        if (!_isContinuousScanRunning) break;
+
+        _activeTrackers.clear();
+        await _listenOneHubUntilDisconnect(
+          hubBleId: hubId,
+          onBatch: _continuousScanCallback,
+          shouldContinue: () => _isContinuousScanRunning,
+          primeScannerCache: false,
+        );
+
+        if (!_isContinuousScanRunning) break;
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
+    }
+
+    await _disconnectHub();
+  }
+
+  /// Live stream for a single hub (add-trackers screen). Mutually exclusive with background.
+  Future<void> startDedicatedHubStream(
+    String hubBleId,
+    void Function(List<PendingTracker>) onUpdate,
+  ) async {
+    await stopDedicatedHubStream();
+    _dedicatedHubActive = true;
+    _activeTrackers.clear();
+    _dedicatedHubFuture = _runDedicatedHubLoop(hubBleId, onUpdate);
+  }
+
+  Future<void> _runDedicatedHubLoop(
+    String hubBleId,
+    void Function(List<PendingTracker>) onUpdate,
+  ) async {
+    while (_dedicatedHubActive) {
+      onUpdate(<PendingTracker>[]);
+      _activeTrackers.clear();
+
+      var gotTelemetry = false;
+      void batchHandler(List<PendingTracker> list) {
+        if (list.isNotEmpty) gotTelemetry = true;
+        onUpdate(list);
       }
 
-      _isContinuousScanRunning = true;
-      _continuousScanCallback = onTrackerUpdate;
-
-      print('[BleService] ✓ Starting continuous BLE scanning (5s cycles)...');
-      
-      // Set up listener for scan results BEFORE starting scan
-      _scanSubscription = FlutterBluePlus.onScanResults.listen(
-        (scanResults) {
-          if (!_isContinuousScanRunning) return;
-
-          print('[BleService] Scan results callback received with ${scanResults.length} results');
-
-          final result = <PendingTracker>[];
-
-          for (final scanResult in scanResults) {
-            final device = scanResult.device;
-            final name = device.advName.isNotEmpty ? device.advName : device.name;
-            final rssi = scanResult.rssi;
-            final address = device.remoteId.toString();
-
-            // Parse device name for ESP32 trackers
-            final parsed = parseDeviceName(name);
-            if (parsed == null) continue;
-
-            final (deviceId: deviceId, serialNumber: serialNumber) = parsed;
-
-            print('[BleService] Detected: $serialNumber, RSSI: $rssi');
-
-            // Filter by RSSI threshold
-            if (rssi < _rssiThreshold) {
-              print('[BleService] RSSI $rssi below threshold, skipping');
-              continue;
-            }
-
-            // Update or create tracker data with Kalman filtering
-            final trackerData = _activeTrackers.putIfAbsent(
-              serialNumber,
-              () => TrackerData(
-                deviceId: deviceId,
-                serialNumber: serialNumber,
-                bleAddress: address,
-                initialRssi: rssi,
-                initialDistance: calculateDistanceWithConfig(rssi),
-              ),
-            );
-
-            // Update with new measurement
-            trackerData.updateRssi(rssi);
-            trackerData.updateDistance(calculateDistanceWithConfig(rssi));
-
-            final signalStrength = (100 + trackerData.rssiFiltered).clamp(0.0, 100.0).toInt();
-
-            print('[BleService] Updated $serialNumber: Filtered RSSI=${trackerData.rssiFiltered.toStringAsFixed(1)}, Distance=${trackerData.distance.toStringAsFixed(2)}m');
-
-            result.add(
-              PendingTracker(
-                deviceId: deviceId,
-                signalStrength: signalStrength,
-                discovered: DateTime.now(),
-                serialNumber: serialNumber,
-                bleAddress: address,
-                rssi: rssi,
-                rssiFiltered: trackerData.rssiFiltered,
-                distance: trackerData.distance,
-                rssiHistory: List.from(trackerData.rssiHistory),
-              ),
-            );
-          }
-
-          // Call callback with updated trackers
-          if (result.isNotEmpty) {
-            print('[BleService] Calling update callback with ${result.length} trackers');
-            _continuousScanCallback?.call(result);
-          }
-        },
-        onError: (e) {
-          print('[BleService] Scan stream error: $e');
-        },
+      await _listenOneHubUntilDisconnect(
+        hubBleId: hubBleId,
+        onBatch: batchHandler,
+        shouldContinue: () => _dedicatedHubActive,
+        primeScannerCache: true,
       );
 
-      // Start initial 5-second scan
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
-      
-      // Restart scan every 5.5 seconds (5s scan + 500ms gap for processing)
-      // Longer cycles reduce Bluetooth stack conflicts
-      _continuousScanTimer = Timer.periodic(const Duration(milliseconds: 5500), (timer) async {
-        if (!_isContinuousScanRunning) {
-          timer.cancel();
-          return;
-        }
+      // Quick second session without another long scan if the first ended with no packets
+      // (stack race after disconnect, or hub BLE client slot timing).
+      if (_dedicatedHubActive && !gotTelemetry) {
+        await Future.delayed(const Duration(milliseconds: 650));
+        gotTelemetry = false;
+        await _listenOneHubUntilDisconnect(
+          hubBleId: hubBleId,
+          onBatch: batchHandler,
+          shouldContinue: () => _dedicatedHubActive,
+          primeScannerCache: false,
+        );
+      }
 
-        try {
-          await FlutterBluePlus.stopScan();
-          await Future.delayed(const Duration(milliseconds: 500)); // Longer pause before restart
-          await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
-          print('[BleService] Restarted continuous scan cycle');
-        } catch (e) {
-          print('[BleService] Error restarting scan: $e');
+      if (_dedicatedHubActive) {
+        await Future.delayed(const Duration(seconds: 1));
+      }
+    }
+    await _disconnectHub();
+  }
+
+  Future<void> stopDedicatedHubStream() async {
+    _dedicatedHubActive = false;
+    await _disconnectHub();
+    if (_dedicatedHubFuture != null) {
+      try {
+        await _dedicatedHubFuture!.timeout(
+          const Duration(seconds: 12),
+          onTimeout: () {
+            print(
+              '[BleService] stopDedicatedHubStream: dedicated future timed out',
+            );
+          },
+        );
+      } catch (e) {
+        print('[BleService] stopDedicatedHubStream: $e');
+      } finally {
+        await _disconnectHub();
+      }
+    }
+    _dedicatedHubFuture = null;
+  }
+
+  /// Android often requires a recent scan before [BluetoothDevice.connect] works
+  /// reliably (desktop Bleak scans first). [dedicatedAddScreen] uses a longer scan.
+  Future<void> _primeHubScannerCache({required bool dedicatedAddScreen}) async {
+    if (!dedicatedAddScreen) return;
+    try {
+      await FlutterBluePlus.stopScan();
+    } catch (_) {}
+    try {
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 4),
+        continuousUpdates: true,
+        withServices: [hubServiceGuid],
+      );
+      await Future.delayed(const Duration(milliseconds: 3200));
+    } finally {
+      try {
+        await FlutterBluePlus.stopScan();
+      } catch (_) {}
+    }
+  }
+
+  /// Prefer the [ScanResult.device] from the last scan so the OS BLE cache is warm.
+  BluetoothDevice _hubDeviceForId(String hubBleId) {
+    final want = hubBleId.trim();
+    for (final r in FlutterBluePlus.lastScanResults) {
+      if (!scanResultIsHub(r)) continue;
+      if (r.device.remoteId.toString() == want) {
+        return r.device;
+      }
+    }
+    return BluetoothDevice.fromId(want);
+  }
+
+  Future<void> _listenOneHubUntilDisconnect({
+    required String hubBleId,
+    required void Function(List<PendingTracker>)? onBatch,
+    required bool Function() shouldContinue,
+    bool primeScannerCache = false,
+  }) async {
+    if (!shouldContinue()) return;
+
+    BluetoothDevice? hub;
+    try {
+      await _primeHubScannerCache(dedicatedAddScreen: primeScannerCache);
+
+      if (!shouldContinue()) return;
+
+      try {
+        final bonded = await FlutterBluePlus.systemDevices([hubServiceGuid]);
+        for (final d in bonded) {
+          if (d.remoteId.toString() == hubBleId.trim()) {
+            hub = d;
+            break;
+          }
         }
+      } catch (_) {}
+
+      hub ??= _hubDeviceForId(hubBleId);
+
+      await hub.connect(timeout: const Duration(seconds: 15), mtu: 512);
+      if (!shouldContinue()) {
+        await hub.disconnect();
+        return;
+      }
+
+      final services = await hub.discoverServices();
+      final pair = _findUartCharacteristics(services);
+      if (pair == null) {
+        await hub.disconnect();
+        return;
+      }
+
+      _connectedHub = hub;
+      _hubRx = pair.rx;
+      _hubTx = pair.tx;
+
+      await pair.tx.setNotifyValue(true);
+
+      final batch = <PendingTracker>[];
+
+      await _hubNotifySubscription?.cancel();
+      _hubNotifySubscription = pair.tx.onValueReceived.listen((value) {
+        if (!shouldContinue()) return;
+        _appendHubPayload(value, (parsed) {
+          _processParsedForPending(parsed, hubBleId, batch);
+          if (batch.isNotEmpty && onBatch != null) {
+            onBatch(List.from(batch));
+          }
+        });
+      });
+      hub.cancelWhenDisconnected(_hubNotifySubscription!);
+
+      final completer = Completer<void>();
+      var ignoreEarlyDisconnect = true;
+      Future<void>.delayed(const Duration(milliseconds: 450), () {
+        ignoreEarlyDisconnect = false;
+      });
+      _hubConnectionSubscription = hub.connectionState.listen((state) {
+        if (state != BluetoothConnectionState.disconnected) return;
+        if (ignoreEarlyDisconnect) return;
+        if (!completer.isCompleted) completer.complete();
       });
 
-      print('[BleService] Continuous scanning initialized with 1.1s cycle');
+      await completer.future;
+
+      await _hubNotifySubscription?.cancel();
+      _hubNotifySubscription = null;
+      await _hubConnectionSubscription?.cancel();
+      _hubConnectionSubscription = null;
+      _connectedHub = null;
+      _hubRx = null;
+      _hubTx = null;
+      _hubLineBuffer = '';
     } catch (e) {
-      print('[BleService] Error starting continuous scan: $e');
-      _isContinuousScanRunning = false;
-      _continuousScanCallback = null;
+      print('[BleService] Hub session error: $e');
+      try {
+        if (hub != null && hub.isConnected) await hub.disconnect();
+      } catch (_) {}
     }
   }
 
-  /// Stop continuous scanning
   Future<void> stopContinuousScanning() async {
-    if (!_isContinuousScanRunning) return;
+    _isContinuousScanRunning = false;
+    _continuousScanCallback = null;
+    _backgroundHubIds = null;
 
-    try {
-      _continuousScanTimer?.cancel();
-      _continuousScanTimer = null;
-      
-      await _scanSubscription?.cancel();
-      _scanSubscription = null;
-      
-      await FlutterBluePlus.stopScan();
-      
-      _isContinuousScanRunning = false;
-      _continuousScanCallback = null;
-      _activeTrackers.clear();
-      
-      print('[BleService] ✓ Continuous scanning stopped');
-    } catch (e) {
-      print('[BleService] Error stopping continuous scan: $e');
-      _isContinuousScanRunning = false;
+    await _disconnectHub();
+
+    if (_hubSessionFuture != null) {
+      try {
+        await _hubSessionFuture!.timeout(
+          const Duration(seconds: 12),
+          onTimeout: () {
+            print(
+              '[BleService] stopContinuousScanning: hub session future timed out',
+            );
+          },
+        );
+      } catch (e) {
+        print('[BleService] stopContinuousScanning session: $e');
+      } finally {
+        await _disconnectHub();
+      }
     }
+    _hubSessionFuture = null;
+
+    _activeTrackers.clear();
   }
 
-  /// Check if continuous scanning is running
   bool get isContinuousScanRunning => _isContinuousScanRunning;
 
-  /// Check if Bluetooth is available on the device
   Future<bool> isBluetoothAvailable() async {
     try {
-      final isAvailable = await FlutterBluePlus.isAvailable;
-      return isAvailable;
+      return await FlutterBluePlus.isSupported;
     } catch (e) {
-      print('[BleService] Error checking Bluetooth availability: $e');
       return false;
     }
   }
 
-  /// Check if Bluetooth is currently enabled
   Future<bool> isBluetoothOn() async {
     try {
-      final isOn = await FlutterBluePlus.isOn;
-      return isOn;
+      final state = await FlutterBluePlus.adapterState.first;
+      return state == BluetoothAdapterState.on;
     } catch (e) {
-      print('[BleService] Error checking Bluetooth state: $e');
       return false;
     }
   }
 
-  /// Request to turn on Bluetooth (may prompt user on Android)
   Future<void> turnOnBluetooth() async {
     try {
       await FlutterBluePlus.turnOn();
-      print('[BleService] Bluetooth enabled');
     } catch (e) {
       print('[BleService] Error turning on Bluetooth: $e');
     }
   }
 
-  /// Ping a registered device via BLE GATT
-  /// Sends a ping command to the device
-  /// Note: Device disables GATT for ~3 seconds after ping, caller should wait 4.2s before retry
-  Future<bool> pingDevice(String deviceAddress) async {
+  Future<bool> pingTrackerOnHub({
+    required String hubBleAddress,
+    required String serialNumber,
+  }) async {
+    final prev = _pingSerialTail;
+    final gate = Completer<void>();
+    _pingSerialTail = gate.future;
+    await prev;
     try {
-      print('[BleService] Starting ping for device: $deviceAddress');
+      await _waitTransientHubPingGap(hubBleAddress);
+      return await _pingTrackerOnHubUnserialized(
+        hubBleAddress: hubBleAddress,
+        serialNumber: serialNumber,
+      );
+    } finally {
+      gate.complete();
+    }
+  }
 
-      // Create BluetoothDevice from address
-      final targetDevice = BluetoothDevice.fromId(deviceAddress);
+  Future<bool> _pingTrackerOnHubUnserialized({
+    required String hubBleAddress,
+    required String serialNumber,
+  }) async {
+    try {
+      print('[BleService] Ping via hub $hubBleAddress serial=$serialNumber');
 
-      // Connect with 3 second timeout
-      print('[BleService] Connecting to device for ping...');
-      await targetDevice.connect(timeout: const Duration(seconds: 3));
-      print('[BleService] Connected, discovering services...');
-
-      // Discover services and characteristics
-      final services = await targetDevice.discoverServices();
-
-      // Find the ping characteristic (UUID from ESP32 firmware)
-      const pingCharUuid = '12345678-1234-5678-1234-56789abcdef1';
-      BluetoothCharacteristic? pingChar;
-
-      for (final service in services) {
-        for (final char in service.characteristics) {
-          // Compare UUID strings (flutter_blue_plus uses lowercase)
-          if (char.uuid.toString().toLowerCase() == pingCharUuid.toLowerCase()) {
-            pingChar = char;
-            print('[BleService] Found ping characteristic');
-            break;
-          }
-        }
-        if (pingChar != null) break;
+      if (_connectedHub != null &&
+          _connectedHub!.remoteId.toString() == hubBleAddress &&
+          _hubRx != null &&
+          _hubTx != null &&
+          _connectedHub!.isConnected) {
+        return _pingUsingCharacteristics(
+          _hubRx!,
+          _hubTx!,
+          serialNumber,
+        );
       }
 
-      if (pingChar == null) {
-        print('[BleService] Ping characteristic not found on device');
-        await targetDevice.disconnect();
+      final hub = BluetoothDevice.fromId(hubBleAddress);
+      await hub.connect(timeout: const Duration(seconds: 15), mtu: 512);
+      final services = await hub.discoverServices();
+      final pair = _findUartCharacteristics(services);
+      if (pair == null) {
+        await hub.disconnect();
+        _markTransientHubDisconnected(hubBleAddress);
         return false;
       }
 
-      // Write ping command (0x01 byte) to trigger device reset
-      print('[BleService] Writing ping command (0x01)...');
-      await pingChar.write([0x01], withoutResponse: false);
-      print('[BleService] Ping command sent successfully');
-
-      // Disconnect immediately after ping
-      print('[BleService] Disconnecting after ping...');
-      await targetDevice.disconnect();
-      print('[BleService] Ping completed successfully');
-
-      return true;
+      final ok = await _pingUsingCharacteristics(
+        pair.rx,
+        pair.tx,
+        serialNumber,
+      );
+      await hub.disconnect();
+      _markTransientHubDisconnected(hubBleAddress);
+      return ok;
     } catch (e) {
       print('[BleService] Ping error: $e');
-
-      // Attempt graceful disconnect on error
-      try {
-        final targetDevice = BluetoothDevice.fromId(deviceAddress);
-        await targetDevice.disconnect();
-      } catch (_) {
-        // Ignore disconnect errors
-      }
-
       return false;
     }
+  }
+
+  Future<bool> _pingUsingCharacteristics(
+    BluetoothCharacteristic rx,
+    BluetoothCharacteristic tx,
+    String serialNumber,
+  ) async {
+    final completer = Completer<bool>();
+    late StreamSubscription<List<int>> sub;
+    var buffer = '';
+
+    sub = tx.onValueReceived.listen((value) {
+      buffer += utf8.decode(value, allowMalformed: true);
+      while (true) {
+        final nl = buffer.indexOf('\n');
+        if (nl < 0) break;
+        final line = buffer.substring(0, nl);
+        buffer = buffer.substring(nl + 1);
+        final t = line.trim();
+        if (t.startsWith('PING_RESULT:$serialNumber:')) {
+          final rest = t.substring('PING_RESULT:$serialNumber:'.length);
+          if (!completer.isCompleted) {
+            completer.complete(rest == 'SUCCESS');
+          }
+        }
+      }
+    });
+
+    await tx.setNotifyValue(true);
+
+    final cmd = utf8.encode('PING:$serialNumber');
+    await rx.write(cmd, withoutResponse: false);
+
+    final success = await completer.future
+        .timeout(const Duration(seconds: 4), onTimeout: () => false);
+
+    await sub.cancel();
+    return success;
   }
 }

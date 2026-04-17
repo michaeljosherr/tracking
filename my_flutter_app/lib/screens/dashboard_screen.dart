@@ -813,7 +813,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return FilledButton.icon(
-      onPressed: () => context.push('/pairing'),
+      onPressed: () => context.push(
+              '/hubs/select?t=${DateTime.now().millisecondsSinceEpoch}',
+            ),
       icon: const Icon(LucideIcons.plus, size: 16),
       label: Text(isCompact ? 'Add' : 'Add Tracker'),
       style: FilledButton.styleFrom(

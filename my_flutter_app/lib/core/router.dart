@@ -5,9 +5,11 @@ import 'package:my_flutter_app/screens/alerts_screen.dart';
 import 'package:my_flutter_app/screens/dashboard_screen.dart';
 import 'package:my_flutter_app/screens/settings_screen.dart';
 import 'package:my_flutter_app/screens/onboarding_screen.dart';
-import 'package:my_flutter_app/screens/pairing_screen.dart';
+import 'package:my_flutter_app/screens/hub_select_screen.dart';
+import 'package:my_flutter_app/screens/hub_trackers_screen.dart';
 import 'package:my_flutter_app/screens/tracker_detail_screen.dart';
 import 'package:my_flutter_app/widgets/app_tab_shell.dart';
+import 'package:my_flutter_app/core/route_observers.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -15,6 +17,7 @@ GoRouter createRouter(AppPreferencesProvider preferencesProvider) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/',
+    observers: [appRouteObserver],
     refreshListenable: preferencesProvider,
     redirect: (context, state) {
       final hasCompletedOnboarding = preferencesProvider.onboardingCompleted;
@@ -70,7 +73,31 @@ GoRouter createRouter(AppPreferencesProvider preferencesProvider) {
       ),
       GoRoute(
         path: '/pairing',
-        builder: (context, state) => const PairingScreen(),
+        redirect: (context, state) => '/hubs/select',
+      ),
+      GoRoute(
+        path: '/hubs/select',
+        pageBuilder: (context, state) => MaterialPage<void>(
+          key: state.pageKey,
+          child: const HubSelectScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/hubs/trackers',
+        pageBuilder: (context, state) {
+          final hubId = state.uri.queryParameters['hubId'];
+          if (hubId == null || hubId.isEmpty) {
+            return const MaterialPage<void>(
+              child: Scaffold(
+                body: Center(child: Text('Missing hub')),
+              ),
+            );
+          }
+          return MaterialPage<void>(
+            key: state.pageKey,
+            child: HubTrackersScreen(hubBleId: hubId),
+          );
+        },
       ),
       GoRoute(
         path: '/tracker/:id',

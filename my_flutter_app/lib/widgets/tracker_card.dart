@@ -28,39 +28,42 @@ class _TrackerCardState extends State<TrackerCard> {
   }
 
   Future<void> _handlePing() async {
+    final provider = context.read<TrackerProvider>();
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final trackerId = widget.tracker.id;
+    final fallbackName = widget.tracker.name;
+
     setState(() {
       _isPinging = true;
     });
 
     try {
-      final success =
-          await context.read<TrackerProvider>().pingTracker(widget.tracker.id);
+      final success = await provider.pingTracker(trackerId);
 
-      if (mounted) {
-        final name = _displayTracker(context).name;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              success
-                  ? 'Ping successful for $name'
-                  : 'Failed to ping $name',
-            ),
-            duration: const Duration(seconds: 3),
-            backgroundColor:
-                success ? Colors.green.shade600 : Colors.red.shade600,
+      if (!mounted) return;
+      final name =
+          provider.getTracker(trackerId)?.name ?? fallbackName;
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Ping successful for $name'
+                : 'Failed to ping $name',
           ),
-        );
-      }
+          duration: const Duration(seconds: 3),
+          backgroundColor:
+              success ? Colors.green.shade600 : Colors.red.shade600,
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error pinging device: $e'),
-            duration: const Duration(seconds: 3),
-            backgroundColor: Colors.red.shade600,
-          ),
-        );
-      }
+      if (!mounted) return;
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text('Error pinging device: $e'),
+          duration: const Duration(seconds: 3),
+          backgroundColor: Colors.red.shade600,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() {

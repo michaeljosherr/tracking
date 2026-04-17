@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/core/app_preferences_provider.dart';
 import 'package:my_flutter_app/core/auth_provider.dart';
 import 'package:my_flutter_app/core/theme_provider.dart';
+import 'package:my_flutter_app/core/tracker_provider.dart';
 import 'package:my_flutter_app/widgets/app_page_layout.dart';
 import 'package:my_flutter_app/widgets/app_top_bar.dart';
 import 'package:provider/provider.dart';
@@ -78,6 +79,76 @@ class SettingsScreen extends StatelessWidget {
                                 ),
                                 behavior: SnackBarBehavior.floating,
                               ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        _buildSectionTitle(context, 'Hub connections'),
+                        Consumer<TrackerProvider>(
+                          builder: (context, trackerProvider, _) {
+                            final hubs = trackerProvider.savedHubBleIds;
+                            if (hubs.isEmpty) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  'No hubs saved yet. Add a hub from the dashboard.',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              );
+                            }
+                            return Column(
+                              children: [
+                                for (final id in hubs)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: _buildActionCard(
+                                      context: context,
+                                      icon: LucideIcons.radioTower,
+                                      iconColor: const Color(0xFF0D9488),
+                                      backgroundColor: const Color(0xFFCCFBF1),
+                                      title: 'Hub',
+                                      subtitle: id,
+                                      onTap: () async {
+                                        final ok = await showDialog<bool>(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            title: const Text('Remove hub?'),
+                                            content: const Text(
+                                              'Deletes this hub and every tracker registered to it on this device.',
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(ctx, false),
+                                                child: const Text('Cancel'),
+                                              ),
+                                              FilledButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(ctx, true),
+                                                child: const Text('Remove'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                        if (ok == true && context.mounted) {
+                                          await context
+                                              .read<TrackerProvider>()
+                                              .removeHubConnection(id);
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                content: Text('Hub removed'),
+                                                behavior:
+                                                    SnackBarBehavior.floating,
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                    ),
+                                  ),
+                              ],
                             );
                           },
                         ),
