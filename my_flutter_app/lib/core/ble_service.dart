@@ -40,7 +40,7 @@ const double KALMAN_MEASUREMENT_NOISE = 2.5;
 const double KALMAN_INITIAL_UNCERTAINTY = 10.0;
 
 // ============================================================================
-// Tracker Data (Kalman on RSSI; distance from hub when present)
+// Tracker Data (Kalman on Wi‑Fi RSSI; hub also merges phone↔hub BLE for display distance)
 // ============================================================================
 
 class TrackerData {
@@ -124,6 +124,10 @@ class BleService {
   BluetoothCharacteristic? _hubRx;
   BluetoothCharacteristic? _hubTx;
 
+  /// Phone ↔ hub BLE link: updated from [BluetoothDevice.readRssi] while connected.
+  Timer? _hubRssiPollTimer;
+  double? _phoneToHubDistanceM;
+
   /// flutter_blue_plus enforces ~2s between GATT connects per device on Android.
   final Map<String, DateTime> _lastTransientHubDisconnectUtc = {};
   Future<void> _pingSerialTail = Future<void>.value();
@@ -205,6 +209,52 @@ class BleService {
     );
   }
 
+  /// Rough phone ↔ tag estimate when only (1) phone↔hub BLE range and (2) hub↔tag
+  /// Wi‑Fi range are known: assume the two legs meet at ~90° at the hub (third side
+  /// of a right triangle). Not exact, but aligns the UI with “distance from this
+  /// phone” better than showing hub↔tag alone.
+  static double combinePhoneHubAndHubTagLegs(
+    double phoneToHubM,
+    double hubToTagM,
+  ) {
+    final a = phoneToHubM.clamp(0.05, 500.0);
+    final b = hubToTagM.clamp(0.05, 500.0);
+    return math.sqrt(a * a + b * b);
+  }
+
+  void _stopHubRssiPolling() {
+    _hubRssiPollTimer?.cancel();
+    _hubRssiPollTimer = null;
+    _phoneToHubDistanceM = null;
+  }
+
+  void _primePhoneToHubFromScanCache(String hubBleId) {
+    final want = hubBleId.trim();
+    for (final r in FlutterBluePlus.lastScanResults) {
+      if (r.device.remoteId.toString() != want) continue;
+      if (!scanResultIsHub(r)) continue;
+      _phoneToHubDistanceM = calculateDistanceWithConfig(r.rssi);
+      return;
+    }
+  }
+
+  Future<void> _readPhoneToHubDistanceOnce(BluetoothDevice hub) async {
+    try {
+      if (!hub.isConnected) return;
+      final rssi = await hub.readRssi();
+      _phoneToHubDistanceM = calculateDistanceWithConfig(rssi);
+    } catch (e) {
+      print('[BleService] readRssi (phone↔hub): $e');
+    }
+  }
+
+  void _startHubRssiPolling(BluetoothDevice hub) {
+    _hubRssiPollTimer?.cancel();
+    _hubRssiPollTimer = Timer.periodic(const Duration(milliseconds: 750), (_) async {
+      await _readPhoneToHubDistanceOnce(hub);
+    });
+  }
+
   static bool scanResultIsHub(ScanResult r) {
     final adv =
         r.device.advName.isNotEmpty ? r.device.advName : r.device.platformName;
@@ -277,11 +327,16 @@ class BleService {
   ) {
     final serial = parsed['serial']!;
     final rssi = int.tryParse(parsed['rssi'] ?? '') ?? -100;
-    final distFromHub = double.tryParse(parsed['distance'] ?? '') ??
-        calculateDistanceWithConfig(rssi);
+    // Hub firmware embeds DISTANCE using its own TX-power constants (often very
+    // different from [txPower] here), which makes meters disagree badly with the
+    // RSSI in the same line (e.g. -18 dBm but ~80 m). Always derive the hub↔tag
+    // leg from [rssi] with the same model as the rest of the app so the value
+    // matches what we show as RSSI.
+    final distFromHub = calculateDistanceWithConfig(rssi);
 
-    // RSSI here is WiFi (tag↔hub AP), not phone BLE. Do not use the BLE scan
-    // threshold (-100 dBm) or marginal links (-101, etc.) are dropped entirely.
+    // RSSI here is Wi‑Fi (tag↔hub AP), not phone BLE. Combine with phone↔hub BLE
+    // range (see [_phoneToHubDistanceM]) so [PendingTracker.distance] reflects an
+    // approximate phone↔tag estimate.
 
     final trackerData = _activeTrackers.putIfAbsent(
       serial,
@@ -297,6 +352,11 @@ class BleService {
     trackerData.updateRssi(rssi);
     trackerData.updateDistance(distFromHub);
 
+    final phoneHub = _phoneToHubDistanceM;
+    final displayDistance = phoneHub != null
+        ? combinePhoneHubAndHubTagLegs(phoneHub, distFromHub)
+        : distFromHub;
+
     final signalStrength =
         (100 + trackerData.rssiFiltered).clamp(0.0, 100.0).toInt();
 
@@ -310,7 +370,7 @@ class BleService {
         bleAddress: hubBleId,
         rssi: rssi,
         rssiFiltered: trackerData.rssiFiltered,
-        distance: trackerData.distance,
+        distance: displayDistance,
         rssiHistory: List.from(trackerData.rssiHistory),
       ),
     );
@@ -366,6 +426,7 @@ class BleService {
   }
 
   Future<void> _disconnectHub() async {
+    _stopHubRssiPolling();
     await _hubNotifySubscription?.cancel();
     _hubNotifySubscription = null;
     await _hubConnectionSubscription?.cancel();
@@ -407,6 +468,10 @@ class BleService {
       }
 
       await pair.tx.setNotifyValue(true);
+      _stopHubRssiPolling();
+      _primePhoneToHubFromScanCache(hubBleId);
+      await _readPhoneToHubDistanceOnce(hub);
+
       final result = <PendingTracker>[];
 
       final sub = pair.tx.onValueReceived.listen((value) {
@@ -426,6 +491,8 @@ class BleService {
     } catch (e) {
       print('[BleService] scanTrackersOnHub error: $e');
       return [];
+    } finally {
+      _stopHubRssiPolling();
     }
   }
 
@@ -644,6 +711,11 @@ class BleService {
 
       await pair.tx.setNotifyValue(true);
 
+      _stopHubRssiPolling();
+      _primePhoneToHubFromScanCache(hubBleId);
+      await _readPhoneToHubDistanceOnce(hub);
+      _startHubRssiPolling(hub);
+
       final batch = <PendingTracker>[];
 
       await _hubNotifySubscription?.cancel();
@@ -675,12 +747,14 @@ class BleService {
       _hubNotifySubscription = null;
       await _hubConnectionSubscription?.cancel();
       _hubConnectionSubscription = null;
+      _stopHubRssiPolling();
       _connectedHub = null;
       _hubRx = null;
       _hubTx = null;
       _hubLineBuffer = '';
     } catch (e) {
       print('[BleService] Hub session error: $e');
+      _stopHubRssiPolling();
       try {
         if (hub != null && hub.isConnected) await hub.disconnect();
       } catch (_) {}
