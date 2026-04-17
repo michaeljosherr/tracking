@@ -7,6 +7,7 @@ import 'package:my_flutter_app/screens/settings_screen.dart';
 import 'package:my_flutter_app/screens/onboarding_screen.dart';
 import 'package:my_flutter_app/screens/hub_select_screen.dart';
 import 'package:my_flutter_app/screens/hub_trackers_screen.dart';
+import 'package:my_flutter_app/screens/all_trackers_radar_screen.dart';
 import 'package:my_flutter_app/screens/tracker_detail_screen.dart';
 import 'package:my_flutter_app/widgets/app_tab_shell.dart';
 import 'package:my_flutter_app/core/route_observers.dart';
@@ -98,6 +99,13 @@ GoRouter createRouter(AppPreferencesProvider preferencesProvider) {
             child: HubTrackersScreen(hubBleId: hubId),
           );
         },
+      ),
+      GoRoute(
+        path: '/radar',
+        pageBuilder: (context, state) => MaterialPage<void>(
+          key: state.pageKey,
+          child: const AllTrackersRadarScreen(),
+        ),
       ),
       GoRoute(
         path: '/tracker/:id',

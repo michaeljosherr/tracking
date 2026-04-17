@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/core/tracker_provider.dart';
@@ -790,7 +791,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ],
                       ),
                     ),
-                    _buildAddTrackerButton(isCompact: true),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        _buildAddTrackerButton(isCompact: true),
+                        const SizedBox(height: 6),
+                        _buildAllTrackersRadarButton(isCompact: true),
+                      ],
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -865,7 +874,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    _buildAddTrackerButton(isCompact: isMobile),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        _buildAddTrackerButton(isCompact: isMobile),
+                        const SizedBox(height: 6),
+                        _buildAllTrackersRadarButton(isCompact: isMobile),
+                      ],
+                    ),
                   ],
                 ),
               ],
@@ -883,6 +900,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildAllTrackersRadarButton({required bool isCompact}) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return OutlinedButton.icon(
+      onPressed: () {
+        HapticFeedback.lightImpact();
+        context.push('/radar');
+      },
+      icon: Icon(LucideIcons.scanSearch, size: isCompact ? 15 : 16),
+      label: Text(isCompact ? 'Radar map' : 'All trackers radar'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: colorScheme.primary,
+        side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.45)),
+        minimumSize: Size(0, isCompact ? 34 : 38),
+        padding: EdgeInsets.symmetric(
+          horizontal: isCompact ? 10 : 14,
+          vertical: isCompact ? 6 : 8,
+        ),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: isCompact ? 12 : 13,
+        ),
+      ),
     );
   }
 
