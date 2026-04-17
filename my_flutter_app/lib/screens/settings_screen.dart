@@ -15,8 +15,6 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = context.watch<AuthProvider>().user;
-
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -24,7 +22,7 @@ class SettingsScreen extends StatelessWidget {
           children: [
             const AppTopBar(
               title: 'Settings',
-              subtitle: 'Manage appearance, local profile, and guided setup.',
+              subtitle: 'Manage appearance, session, hub connections, and guided setup.',
             ),
             Expanded(
               child: ListView(
@@ -36,8 +34,6 @@ class SettingsScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildProfileCard(context, user),
-                        const SizedBox(height: 24),
                         _buildSectionTitle(context, 'Appearance'),
                         _buildThemeCard(context),
                         const SizedBox(height: 24),
@@ -177,98 +173,6 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfileCard(BuildContext context, User? user) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final textTheme = theme.textTheme;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const CircleAvatar(
-            radius: 30,
-            backgroundColor: Color(0xFF2563EB),
-            child: Icon(Icons.person_rounded, color: Colors.white, size: 28),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  user?.name ?? 'Local User',
-                  style: textTheme.headlineSmall?.copyWith(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  user?.email ?? 'local@tracker.app',
-                  style: textTheme.bodyMedium?.copyWith(
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _buildMetaPill(
-                      context: context,
-                      label: (user?.role ?? 'local').toUpperCase(),
-                      color: const Color(0xFF1D4ED8),
-                      backgroundColor: const Color(0xFFEFF6FF),
-                    ),
-                    _buildMetaPill(
-                      context: context,
-                      label: 'LOCAL SESSION',
-                      color: const Color(0xFF0F766E),
-                      backgroundColor: const Color(0xFFECFDF5),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMetaPill({
-    required BuildContext context,
-    required String label,
-    required Color color,
-    required Color backgroundColor,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? color.withValues(alpha: 0.16) : backgroundColor,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.4,
         ),
       ),
     );

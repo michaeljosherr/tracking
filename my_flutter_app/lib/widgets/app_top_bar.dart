@@ -76,6 +76,99 @@ class _AppTopBarState extends State<AppTopBar> {
                     final containerPadding = compactHeader
                         ? const EdgeInsets.fromLTRB(16, 14, 16, 14)
                         : const EdgeInsets.fromLTRB(18, 16, 18, 16);
+                    final showKicker =
+                        widget.subtitle != null && !compactHeader;
+
+                    final titleBlock = Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.only(
+                            top: showKicker ? 2 : 6,
+                            right: 12,
+                          ),
+                          child: Container(
+                            width: 4,
+                            height: showKicker ? 36 : 26,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Color(0xFF60A5FA),
+                                  Color(0xFF2563EB),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(
+                                    0xFF2563EB,
+                                  ).withValues(alpha: 0.12),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (showKicker) ...[
+                                Text(
+                                  'Tracker workspace',
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.primary,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                                SizedBox(
+                                  height: compactHeader ? 4 : 6,
+                                ),
+                              ],
+                              Text(
+                                widget.title,
+                                maxLines: 1,
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
+                                style: textTheme.headlineSmall?.copyWith(
+                                  fontSize: titleFontSize,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.15,
+                                  letterSpacing: -0.15,
+                                ),
+                              ),
+                              if (widget.subtitle != null) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  widget.subtitle!,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: textTheme.bodySmall?.copyWith(
+                                    fontSize: subtitleFontSize,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+
+                    final actions = _buildAlertsMenuButton(
+                      recentAlerts: menuAlerts,
+                      badgeCount: unreadAlerts.length,
+                      compact: compactHeader,
+                    );
 
                     return Container(
                       padding: containerPadding,
@@ -98,104 +191,14 @@ class _AppTopBarState extends State<AppTopBar> {
                           ),
                         ],
                       ),
-                      child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final titleBlock = Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 6,
-                            height: widget.subtitle != null ? 42 : 28,
-                            margin: const EdgeInsets.only(top: 4, right: 14),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Color(0xFF60A5FA),
-                                  Color(0xFF2563EB),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(999),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(
-                                    0xFF2563EB,
-                                  ).withValues(alpha: 0.12),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Tracker workspace',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: textTheme.labelSmall?.copyWith(
-                                    color: colorScheme.primary,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.35,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  widget.title,
-                                  style: textTheme.headlineSmall?.copyWith(
-                                    fontSize: titleFontSize,
-                                    fontWeight: FontWeight.w700,
-                                    height: 1.05,
-                                    letterSpacing: -0.3,
-                                  ),
-                                ),
-                                if (widget.subtitle != null) ...[
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    widget.subtitle!,
-                                    style: textTheme.bodySmall?.copyWith(
-                                      fontSize: subtitleFontSize,
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
-
-                      final actions = _buildAlertsMenuButton(
-                        recentAlerts: menuAlerts,
-                        badgeCount: unreadAlerts.length,
-                        compact: compactHeader,
-                      );
-
-                      if (compactHeader) {
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: titleBlock),
-                            const SizedBox(width: 10),
-                            actions,
-                          ],
-                        );
-                      }
-
-                      return Row(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(child: titleBlock),
-                          const SizedBox(width: 12),
+                          SizedBox(width: compactHeader ? 8 : 12),
                           actions,
                         ],
-                      );
-                    },
-                  ),
+                      ),
                     );
                   },
                 ),
