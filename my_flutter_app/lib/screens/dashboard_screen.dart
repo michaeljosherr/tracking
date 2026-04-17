@@ -536,7 +536,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     if (embedded) {
-      return body;
+      return _buildEmbeddedSearchFiltersShell(body);
     }
 
     return Card(
@@ -549,6 +549,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: body,
+      ),
+    );
+  }
+
+  /// Rounded “search field” shell for the tracker list (embedded mode).
+  Widget _buildEmbeddedSearchFiltersShell(Widget child) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(
+        alpha: theme.brightness == Brightness.dark ? 0.55 : 1.0,
+      ),
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.65),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: child,
+        ),
       ),
     );
   }
@@ -634,47 +660,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildDisplayModeRow({
+  Widget _buildDisplayModeSection({
     required bool compact,
     required bool isMobile,
   }) {
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
 
-    if (compact) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
+    final row = Row(
+      children: [
+        Icon(
+          LucideIcons.layoutGrid,
+          size: 16,
+          color: colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
             'Display mode',
-            style: textTheme.labelSmall?.copyWith(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
+            style: textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
             ),
           ),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 36,
-            child: _buildViewToggle(true, height: 36),
-          ),
-        ],
-      );
-    }
-
-    return Row(
-      children: [
-        Text(
-          'Display mode',
-          style: textTheme.labelSmall?.copyWith(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-          ),
         ),
-        const Spacer(),
         SizedBox(
-          height: 36,
-          child: _buildViewToggle(isMobile, height: 36),
+          height: 38,
+          child: _buildViewToggle(compact, height: 38),
         ),
       ],
+    );
+
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(
+        alpha: theme.brightness == Brightness.dark ? 0.45 : 1.0,
+      ),
+      borderRadius: BorderRadius.circular(16),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.55),
+          ),
+        ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: compact ? 10 : 12,
+          ),
+          child: row,
+        ),
+      ),
     );
   }
 
@@ -758,70 +795,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final compact = constraints.maxWidth < 420;
 
         return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Text(
+                'Tracker library',
+                style: textTheme.labelSmall?.copyWith(
+                  color: colorScheme.primary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              const SizedBox(height: 6),
               if (compact) ...[
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Tracker library',
-                            style: textTheme.labelSmall?.copyWith(
-                              color: colorScheme.primary,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.35,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Registered Trackers',
-                            style: textTheme.titleLarge?.copyWith(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        'Registered Trackers',
+                        style: textTheme.titleLarge?.copyWith(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.35,
+                          height: 1.15,
+                        ),
                       ),
                     ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        _buildAddTrackerButton(isCompact: true),
-                        const SizedBox(height: 6),
-                        _buildAllTrackersRadarButton(isCompact: true),
-                      ],
-                    ),
+                    const SizedBox(width: 10),
+                    _buildDeviceCountPill(countLabel, colorScheme, isDark),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(
-                      alpha: isDark ? 0.18 : 0.08,
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildAddTrackerButton(isCompact: true),
                     ),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    countLabel,
-                    style: TextStyle(
-                      color: colorScheme.primary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 11,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _buildAllTrackersRadarButton(isCompact: true),
                     ),
-                  ),
+                  ],
                 ),
               ] else ...[
                 Row(
@@ -832,63 +849,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Tracker library',
-                            style: textTheme.labelSmall?.copyWith(
-                              color: colorScheme.primary,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.35,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
                             'Registered Trackers',
-                            style: textTheme.titleLarge?.copyWith(
-                              fontSize: 18,
+                            style: textTheme.headlineSmall?.copyWith(
                               fontWeight: FontWeight.w800,
-                              letterSpacing: -0.2,
+                              letterSpacing: -0.4,
+                              height: 1.1,
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colorScheme.primary.withValues(
-                                alpha: isDark ? 0.18 : 0.08,
-                              ),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              countLabel,
-                              style: TextStyle(
-                                color: colorScheme.primary,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ),
+                          const SizedBox(height: 8),
+                          _buildDeviceCountPill(countLabel, colorScheme, isDark),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Column(
+                    const SizedBox(width: 16),
+                    Row(
                       mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         _buildAddTrackerButton(isCompact: isMobile),
-                        const SizedBox(height: 6),
+                        const SizedBox(width: 10),
                         _buildAllTrackersRadarButton(isCompact: isMobile),
                       ],
                     ),
                   ],
                 ),
               ],
-              const SizedBox(height: 8),
-              _buildDisplayModeRow(compact: compact, isMobile: isMobile),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+              _buildDisplayModeSection(compact: compact, isMobile: isMobile),
+              const SizedBox(height: 12),
               _buildSearchAndFilters(
                 totalTrackers: totalTrackers,
                 connectedCount: connectedCount,
@@ -903,29 +890,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildDeviceCountPill(
+    String countLabel,
+    ColorScheme colorScheme,
+    bool isDark,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: colorScheme.primary.withValues(alpha: isDark ? 0.2 : 0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: colorScheme.primary.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Text(
+        countLabel,
+        style: TextStyle(
+          color: colorScheme.primary,
+          fontWeight: FontWeight.w800,
+          fontSize: 11,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+
   Widget _buildAllTrackersRadarButton({required bool isCompact}) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return OutlinedButton.icon(
+    return FilledButton.tonalIcon(
       onPressed: () {
         HapticFeedback.lightImpact();
         context.push('/radar');
       },
-      icon: Icon(LucideIcons.scanSearch, size: isCompact ? 15 : 16),
-      label: Text(isCompact ? 'Radar map' : 'All trackers radar'),
-      style: OutlinedButton.styleFrom(
+      icon: Icon(LucideIcons.scanSearch, size: isCompact ? 17 : 18),
+      label: Text(isCompact ? 'Radar' : 'Radar map'),
+      style: FilledButton.styleFrom(
         foregroundColor: colorScheme.primary,
-        side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.45)),
-        minimumSize: Size(0, isCompact ? 34 : 38),
+        backgroundColor: colorScheme.primaryContainer.withValues(alpha: 0.55),
+        minimumSize: Size(0, isCompact ? 44 : 46),
         padding: EdgeInsets.symmetric(
-          horizontal: isCompact ? 10 : 14,
-          vertical: isCompact ? 6 : 8,
+          horizontal: isCompact ? 12 : 16,
+          vertical: 10,
         ),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         textStyle: TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: isCompact ? 12 : 13,
+          fontWeight: FontWeight.w800,
+          fontSize: isCompact ? 13 : 14,
         ),
       ),
     );
@@ -938,21 +952,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       onPressed: () => context.push(
               '/hubs/select?t=${DateTime.now().millisecondsSinceEpoch}',
             ),
-      icon: Icon(LucideIcons.plus, size: isCompact ? 15 : 16),
-      label: Text(isCompact ? 'Add' : 'Add Tracker'),
+      icon: Icon(LucideIcons.plus, size: isCompact ? 17 : 18),
+      label: Text(isCompact ? 'Add' : 'Add tracker'),
       style: FilledButton.styleFrom(
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
-        minimumSize: Size(0, isCompact ? 36 : 40),
+        minimumSize: Size(0, isCompact ? 44 : 46),
         padding: EdgeInsets.symmetric(
-          horizontal: isCompact ? 12 : 16,
-          vertical: isCompact ? 8 : 10,
+          horizontal: isCompact ? 14 : 18,
+          vertical: 10,
         ),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         textStyle: TextStyle(
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
           fontSize: isCompact ? 13 : 14,
         ),
       ),
