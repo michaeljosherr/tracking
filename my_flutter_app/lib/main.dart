@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:my_flutter_app/core/auth_provider.dart';
 import 'package:my_flutter_app/core/app_preferences_provider.dart';
+import 'package:my_flutter_app/core/bluetooth_status_provider.dart';
 import 'package:my_flutter_app/core/router.dart';
 import 'package:my_flutter_app/core/app_themes.dart';
 import 'package:my_flutter_app/core/theme_provider.dart';
 import 'package:my_flutter_app/core/tracker_provider.dart';
+import 'package:my_flutter_app/widgets/bluetooth_gate.dart';
 
 void main() {
   runApp(const MyApp());
@@ -41,6 +43,7 @@ class _MyAppState extends State<MyApp> {
         ),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AppPreferencesProvider()),
+        ChangeNotifierProvider(create: (_) => BluetoothStatusProvider()),
       ],
       child: Consumer3<AuthProvider, ThemeProvider, AppPreferencesProvider>(
         builder:
@@ -63,6 +66,11 @@ class _MyAppState extends State<MyApp> {
                 darkTheme: AppThemes.darkTheme,
                 themeMode: themeProvider.themeMode,
                 routerConfig: router,
+                builder: (context, child) {
+                  return BluetoothGate(
+                    child: child ?? const SizedBox.shrink(),
+                  );
+                },
               );
             },
       ),
