@@ -143,11 +143,15 @@ class _HubPageState extends State<HubPage> with SingleTickerProviderStateMixin {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '$connectedCount of ${hubTrackers.length} connected',
+                    hubTrackers.isEmpty
+                        ? 'Add a tracker to get started'
+                        : '$connectedCount of ${hubTrackers.length} connected',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w500,
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -479,7 +483,11 @@ class _HubOverviewCard extends StatelessWidget {
                   ),
                 ),
               ),
-              _HealthChip(percent: healthPct, theme: theme),
+              _HealthChip(
+                percent: healthPct,
+                totalTrackers: total,
+                theme: theme,
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -522,15 +530,24 @@ class _HubOverviewCard extends StatelessWidget {
 }
 
 class _HealthChip extends StatelessWidget {
-  const _HealthChip({required this.percent, required this.theme});
+  const _HealthChip({
+    required this.percent,
+    required this.totalTrackers,
+    required this.theme,
+  });
   final double percent;
+  /// When 0, this is onboarding — do not imply the hub radio is dead.
+  final int totalTrackers;
   final ThemeData theme;
 
   @override
   Widget build(BuildContext context) {
     final Color color;
     final String label;
-    if (percent >= 0.75) {
+    if (totalTrackers == 0) {
+      color = const Color(0xFF0D9488);
+      label = 'Set up';
+    } else if (percent >= 0.75) {
       color = Colors.green.shade600;
       label = 'Healthy';
     } else if (percent >= 0.35) {
@@ -758,7 +775,11 @@ class _HubCalibrationSectionState extends State<_HubCalibrationSection> {
             ],
           ),
           const SizedBox(height: 6),
-          _StrongestTrackerBanner(theme: theme, strongest: strongest),
+          _StrongestTrackerBanner(
+            theme: theme,
+            strongest: strongest,
+            registeredCount: widget.trackers.length,
+          ),
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
@@ -908,42 +929,102 @@ class _StrongestTrackerBanner extends StatelessWidget {
   const _StrongestTrackerBanner({
     required this.theme,
     required this.strongest,
+    required this.registeredCount,
   });
 
   final ThemeData theme;
   final Tracker? strongest;
+  final int registeredCount;
 
   @override
   Widget build(BuildContext context) {
-    final hasTracker = strongest != null;
-    final bg = hasTracker
-        ? theme.colorScheme.surfaceContainerHighest
-        : theme.colorScheme.errorContainer.withValues(alpha: 0.35);
-    final fg = hasTracker
-        ? theme.colorScheme.onSurfaceVariant
-        : theme.colorScheme.error;
+    final hasLive = strongest != null;
+    if (hasLive) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              LucideIcons.signalHigh,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Using strongest tracker: ${strongest!.name} (${strongest!.rssi} dBm)',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (registeredCount == 0) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.25),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              LucideIcons.tags,
+              size: 16,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Register a tracker on this hub first. Calibration needs live RSSI from a tag — use the Trackers tab or the + button.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: bg,
+        color: Colors.orange.shade50.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade200),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            hasTracker ? LucideIcons.signalHigh : LucideIcons.triangleAlert,
+            LucideIcons.wifiOff,
             size: 16,
-            color: fg,
+            color: Colors.orange.shade800,
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              hasTracker
-                  ? 'Using strongest tracker: ${strongest!.name} (${strongest!.rssi} dBm)'
-                  : 'Connect at least one tracker on this hub before calibrating.',
+              'No live RSSI from your trackers yet. Bring a tag in range or check power, then try calibrating.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: fg,
+                color: Colors.orange.shade900,
                 fontWeight: FontWeight.w600,
               ),
             ),

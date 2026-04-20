@@ -91,6 +91,9 @@ class TrackerProvider with ChangeNotifier {
   static const String _scannerConfigStorageKey = 'scanner_config';
   static const int _offlineThresholdSeconds = 20;
 
+  /// BLE addresses differ by platform/casing; keep status/names keyed consistently.
+  String _hubBleKey(String hubBleId) => hubBleId.trim().toUpperCase();
+
   List<Tracker> get trackers => _trackers;
   List<Alert> get alerts => _alerts;
   bool get isScanningHubs => _isScanningHubs;
@@ -119,11 +122,32 @@ class TrackerProvider with ChangeNotifier {
       _trackers.where((t) => t.status == TrackerStatus.disconnected).length;
 
   HubConnectionStatus getHubConnectionStatus(String hubBleId) {
-    return _hubStatuses[hubBleId.trim()] ?? HubConnectionStatus.disconnected;
+    return _hubStatuses[_hubBleKey(hubBleId)] ??
+        HubConnectionStatus.disconnected;
+  }
+
+  /// Use on hub cards and other **UI**: the raw BLE session can read
+  /// [Disconnected] briefly while hub rotation reconnects or before the first
+  /// GATT session, even though tracker rows already show live telemetry.
+  /// If any tracker on this hub is [TrackerStatus.connected] with a recent
+  /// [lastSeen], we treat the hub as connected so the badge matches the chips.
+  HubConnectionStatus getHubUiConnectionStatus(String hubBleId) {
+    final raw = getHubConnectionStatus(hubBleId);
+    if (raw != HubConnectionStatus.disconnected) {
+      return raw;
+    }
+    final now = DateTime.now();
+    for (final t in getTrackersForHub(hubBleId)) {
+      if (t.status != TrackerStatus.connected) continue;
+      if (now.difference(t.lastSeen).inSeconds <= _offlineThresholdSeconds) {
+        return HubConnectionStatus.connected;
+      }
+    }
+    return raw;
   }
 
   String getHubDisplayName(String hubBleId, {String? fallbackName}) {
-    final saved = _hubNames[hubBleId.trim()];
+    final saved = _hubNames[_hubBleKey(hubBleId)];
     if (saved != null && saved.trim().isNotEmpty) {
       return saved.trim();
     }
@@ -132,8 +156,12 @@ class TrackerProvider with ChangeNotifier {
 
   /// Get trackers scoped to a specific hub
   List<Tracker> getTrackersForHub(String hubBleId) {
+    final want = _hubBleKey(hubBleId);
     return _trackers
-        .where((t) => t.bleAddress?.trim() == hubBleId.trim())
+        .where(
+          (t) =>
+              t.bleAddress != null && _hubBleKey(t.bleAddress!) == want,
+        )
         .toList();
   }
 
@@ -142,7 +170,7 @@ class TrackerProvider with ChangeNotifier {
     final hubIds = <String>{..._savedHubBleIds};
     for (final t in _trackers) {
       if (t.bleAddress != null && t.bleAddress!.isNotEmpty) {
-        hubIds.add(t.bleAddress!);
+        hubIds.add(_hubBleKey(t.bleAddress!));
       }
     }
     return hubIds.toList()..sort();
@@ -150,7 +178,13 @@ class TrackerProvider with ChangeNotifier {
 
   /// Get count of trackers for a hub
   int getTrackerCountForHub(String hubBleId) {
-    return _trackers.where((t) => t.bleAddress?.trim() == hubBleId.trim()).length;
+    final want = _hubBleKey(hubBleId);
+    return _trackers
+        .where(
+          (t) =>
+              t.bleAddress != null && _hubBleKey(t.bleAddress!) == want,
+        )
+        .length;
   }
 
   /// Get connection status summary for a hub
@@ -173,7 +207,9 @@ class TrackerProvider with ChangeNotifier {
   List<String> _distinctHubBleIdsForBackground() {
     final s = <String>{..._savedHubBleIds};
     for (final t in _trackers) {
-      if (t.bleAddress != null) s.add(t.bleAddress!);
+      if (t.bleAddress != null) {
+        s.add(_hubBleKey(t.bleAddress!));
+      }
     }
     return s.toList();
   }
@@ -184,9 +220,13 @@ class TrackerProvider with ChangeNotifier {
     await _loadScannerConfig();
     print('[TrackerProvider] Initialized with ${_trackers.length} saved tracker(s)');
 
-    if (_trackers.isNotEmpty) {
-      await _ensureHeadingForTracking();
-      print('[TrackerProvider] Auto-starting background scanning after loading ${_trackers.length} tracker(s)');
+    if (_trackers.isNotEmpty || _savedHubBleIds.isNotEmpty) {
+      if (_trackers.isNotEmpty) {
+        await _ensureHeadingForTracking();
+      }
+      print(
+        '[TrackerProvider] Auto-starting background: trackers=${_trackers.length}, savedHubs=${_savedHubBleIds.length}',
+      );
       await startBackgroundScanning();
     }
   }
@@ -228,24 +268,24 @@ class TrackerProvider with ChangeNotifier {
       final namesJson = prefs.getString(_hubNamesStorageKey);
       _savedHubBleIds
         ..clear()
-        ..addAll(list);
+        ..addAll(list.map(_hubBleKey));
       _hubNames
         ..clear()
         ..addAll(
           namesJson == null
               ? const <String, String>{}
               : (jsonDecode(namesJson) as Map<String, dynamic>).map(
-                  (key, value) => MapEntry(key.trim(), value.toString()),
+                  (key, value) => MapEntry(_hubBleKey(key.toString()), value.toString()),
                 ),
         );
       for (final t in _trackers) {
         if (t.bleAddress != null) {
-          _savedHubBleIds.add(t.bleAddress!);
+          _savedHubBleIds.add(_hubBleKey(t.bleAddress!));
         }
       }
       for (final hubBleId in _savedHubBleIds) {
         _hubStatuses.putIfAbsent(
-          hubBleId.trim(),
+          hubBleId,
           () => HubConnectionStatus.disconnected,
         );
       }
@@ -458,10 +498,11 @@ class TrackerProvider with ChangeNotifier {
 
   /// Remember that this hub is part of the user's setup (shows in Settings, background rotation).
   Future<void> rememberHubConnection(String hubBleId) async {
-    if (_savedHubBleIds.contains(hubBleId)) return;
-    _savedHubBleIds.add(hubBleId);
+    final key = _hubBleKey(hubBleId);
+    if (_savedHubBleIds.contains(key)) return;
+    _savedHubBleIds.add(key);
     _hubStatuses.putIfAbsent(
-      hubBleId.trim(),
+      key,
       () => HubConnectionStatus.disconnected,
     );
     await _saveHubIds();
@@ -469,7 +510,7 @@ class TrackerProvider with ChangeNotifier {
   }
 
   Future<void> renameHub(String hubBleId, String newName) async {
-    final key = hubBleId.trim();
+    final key = _hubBleKey(hubBleId);
     final cleaned = newName.trim();
     if (cleaned.isEmpty) return;
     if (_hubNames[key] == cleaned) return;
@@ -521,21 +562,25 @@ class TrackerProvider with ChangeNotifier {
     await stopDedicatedHubStream();
     await stopBackgroundScanning();
 
-    _savedHubBleIds.remove(hubBleId);
-    _hubStatuses.remove(hubBleId.trim());
-    _hubNames.remove(hubBleId.trim());
-    _cancelPendingHubAlertBookkeeping(hubBleId.trim());
+    final hk = _hubBleKey(hubBleId);
+    _savedHubBleIds.remove(hk);
+    _hubStatuses.remove(hk);
+    _hubNames.remove(hk);
+    _cancelPendingHubAlertBookkeeping(hk);
     // Drop old alerts about this hub so the user isn't haunted by a hub they
     // intentionally removed.
     _alerts.removeWhere(
-      (a) => a.isHub && a.trackerId == hubBleId.trim(),
+      (a) => a.isHub && _hubBleKey(a.trackerId) == hk,
     );
-    for (final t in _trackers.where((x) => x.bleAddress == hubBleId)) {
+    for (final t in _trackers.where((x) =>
+        x.bleAddress != null && _hubBleKey(x.bleAddress!) == hk)) {
       if (t.serialNumber != null) {
         _distanceFiltersBySerial.remove(t.serialNumber!);
       }
     }
-    _trackers.removeWhere((t) => t.bleAddress == hubBleId);
+    _trackers.removeWhere(
+      (t) => t.bleAddress != null && _hubBleKey(t.bleAddress!) == hk,
+    );
     await _saveHubIds();
     await _saveTrackers();
 
@@ -559,19 +604,24 @@ class TrackerProvider with ChangeNotifier {
   }
 
   Future<void> startBackgroundScanning() async {
-    if (_isBackgroundScanning || _trackers.isEmpty) {
-      if (_trackers.isEmpty) {
-        print('[TrackerProvider] Cannot start background scanning: no registered trackers');
-      }
+    if (_isBackgroundScanning) {
+      return;
+    }
+    if (_trackers.isEmpty && _savedHubBleIds.isEmpty) {
+      print(
+        '[TrackerProvider] Cannot start background scanning: no saved hubs and no trackers',
+      );
       return;
     }
 
     _isBackgroundScanning = true;
     for (final hubBleId in _distinctHubBleIdsForBackground()) {
-      _hubStatuses[hubBleId.trim()] = HubConnectionStatus.connecting;
+      _hubStatuses[_hubBleKey(hubBleId)] = HubConnectionStatus.connecting;
     }
     notifyListeners();
-    print('[TrackerProvider] ✓ Background hub rotation for ${_trackers.length} tracker(s)');
+    print(
+      '[TrackerProvider] ✓ Background hub rotation — trackers=${_trackers.length}, hubs=${_distinctHubBleIdsForBackground().length}',
+    );
 
     try {
       await _ble.startContinuousScanning(
@@ -584,7 +634,19 @@ class TrackerProvider with ChangeNotifier {
           _setHubConnectionStatus(hubBleId, HubConnectionStatus.connected);
         },
         onHubDisconnected: (hubBleId) {
-          _setHubConnectionStatus(hubBleId, HubConnectionStatus.disconnected);
+          // During multi-hub rotation the stack disconnects between cycles. That
+          // is not the same as "hub offline" — keep [connecting] until the next
+          // connect attempt so the dashboard does not flash Disconnected while
+          // trackers still show live telemetry.
+          final k = _hubBleKey(hubBleId);
+          final stillInRotation = _distinctHubBleIdsForBackground()
+              .map(_hubBleKey)
+              .contains(k);
+          if (_isBackgroundScanning && stillInRotation) {
+            _setHubConnectionStatus(hubBleId, HubConnectionStatus.connecting);
+          } else {
+            _setHubConnectionStatus(hubBleId, HubConnectionStatus.disconnected);
+          }
         },
       );
 
@@ -729,7 +791,7 @@ class TrackerProvider with ChangeNotifier {
     String hubBleId,
     HubConnectionStatus status,
   ) {
-    final key = hubBleId.trim();
+    final key = _hubBleKey(hubBleId);
     if (_hubStatuses[key] == status) return;
     _hubStatuses[key] = status;
     _maybeEmitHubAlertForTransition(key, status);
@@ -797,6 +859,8 @@ class TrackerProvider with ChangeNotifier {
         break;
       case HubConnectionStatus.connecting:
         // Don't alert on connecting — noisy during background rotation.
+        // Cancel any pending "disconnect" grace timer (rotation gap is not an outage).
+        _hubDisconnectAlertTimers.remove(key)?.cancel();
         break;
     }
   }
@@ -904,18 +968,20 @@ class TrackerProvider with ChangeNotifier {
     String name,
     String expectedHubBleId,
   ) async {
+    final hubKey = _hubBleKey(expectedHubBleId);
     final serial = pendingTracker.serialNumber;
     if (serial == null || serial.isEmpty) {
       return SerialRegistrationOutcome.invalid;
     }
     if (pendingTracker.bleAddress != null &&
-        pendingTracker.bleAddress != expectedHubBleId) {
+        _hubBleKey(pendingTracker.bleAddress!) != hubKey) {
       return SerialRegistrationOutcome.invalid;
     }
 
     final existing = _trackerBySerial(serial);
     if (existing != null) {
-      if (existing.bleAddress == expectedHubBleId) {
+      if (existing.bleAddress != null &&
+          _hubBleKey(existing.bleAddress!) == hubKey) {
         return SerialRegistrationOutcome.duplicateOnThisHub;
       }
       return SerialRegistrationOutcome.blockedOtherHub;
@@ -940,11 +1006,11 @@ class TrackerProvider with ChangeNotifier {
       rssiFiltered: rssiFilteredValue,
       distance: distance,
       serialNumber: pendingTracker.serialNumber,
-      bleAddress: expectedHubBleId,
+      bleAddress: hubKey,
     );
 
     _trackers.add(newTracker);
-    await rememberHubConnection(expectedHubBleId);
+    await rememberHubConnection(hubKey);
 
     print('[TrackerProvider] ✓ Registered device: "$name" ($serial) on hub $expectedHubBleId');
     notifyListeners();

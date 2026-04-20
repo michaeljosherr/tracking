@@ -22,7 +22,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<TrackerProvider>();
-      if (!provider.isBackgroundScanning && provider.trackers.isNotEmpty) {
+      final hasWork =
+          provider.trackers.isNotEmpty || provider.savedHubBleIds.isNotEmpty;
+      if (!provider.isBackgroundScanning && hasWork) {
         provider.startBackgroundScanning();
       }
     });
