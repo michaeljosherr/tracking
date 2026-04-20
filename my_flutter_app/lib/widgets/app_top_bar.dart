@@ -372,9 +372,25 @@ class _AppTopBarState extends State<AppTopBar> {
       return;
     }
 
-    if (selectedValue.startsWith('tracker:')) {
-      final trackerId = selectedValue.replaceFirst('tracker:', '');
-      context.push('/tracker/$trackerId');
+    if (selectedValue.startsWith('open-alert:')) {
+      final alertId = selectedValue.substring('open-alert:'.length);
+      final provider = context.read<TrackerProvider>();
+      Alert? alert;
+      for (final a in provider.alerts) {
+        if (a.id == alertId) {
+          alert = a;
+          break;
+        }
+      }
+      if (alert == null) return;
+      if (!alert.acknowledged) {
+        provider.acknowledgeAlert(alert.id);
+      }
+      if (alert.isHub) {
+        context.push('/hub/${Uri.encodeComponent(alert.trackerId)}');
+      } else {
+        context.push('/tracker/${alert.trackerId}');
+      }
     }
   }
 }
@@ -435,7 +451,7 @@ class _AlertsMenuPanel extends StatelessWidget {
                     ...recentAlerts.map(
                       (alert) => _AlertMenuTile(
                         alert: alert,
-                        onTap: () => onSelect('tracker:${alert.trackerId}'),
+                        onTap: () => onSelect('open-alert:${alert.id}'),
                       ),
                     ),
                   if (unreadCount > 0) ...[
@@ -579,14 +595,18 @@ class _AlertMenuTile extends StatelessWidget {
     final textTheme = theme.textTheme;
 
     final accentColor = switch (alert.type) {
-      'disconnected' => const Color(0xFFDC2626),
+      'disconnected' || 'hub-disconnected' => const Color(0xFFDC2626),
       'out-of-range' => const Color(0xFFEA580C),
+      'hub-connected' => const Color(0xFF2563EB),
       _ => const Color(0xFF16A34A),
     };
 
     final icon = switch (alert.type) {
       'disconnected' => LucideIcons.wifiOff,
       'out-of-range' => LucideIcons.mapPinOff,
+      'hub-connected' ||
+      'hub-reconnected' ||
+      'hub-disconnected' => LucideIcons.radioTower,
       _ => LucideIcons.badgeCheck,
     };
 

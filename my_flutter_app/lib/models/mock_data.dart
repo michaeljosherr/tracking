@@ -116,12 +116,21 @@ class Tracker {
 
 class Alert {
   final String id;
+  /// Subject of the alert:
+  /// - when [category] == 'tracker' this is the tracker id
+  /// - when [category] == 'hub' this is the hub BLE id
   final String trackerId;
+  /// Display name for the subject (tracker name or hub name).
   final String trackerName;
-  final String type; // "disconnected" | "out-of-range" | "reconnected"
+  /// Event type:
+  /// - tracker: 'disconnected' | 'out-of-range' | 'reconnected'
+  /// - hub:     'hub-connected' | 'hub-disconnected' | 'hub-reconnected'
+  final String type;
   final String message;
   final DateTime timestamp;
   final bool acknowledged;
+  /// 'tracker' (default) or 'hub'. Used by the UI to pick routing + iconography.
+  final String category;
 
   Alert({
     required this.id,
@@ -131,7 +140,10 @@ class Alert {
     required this.message,
     required this.timestamp,
     required this.acknowledged,
+    this.category = 'tracker',
   });
+
+  bool get isHub => category == 'hub';
 
   Alert copyWith({
     String? id,
@@ -141,6 +153,7 @@ class Alert {
     String? message,
     DateTime? timestamp,
     bool? acknowledged,
+    String? category,
   }) {
     return Alert(
       id: id ?? this.id,
@@ -150,6 +163,7 @@ class Alert {
       message: message ?? this.message,
       timestamp: timestamp ?? this.timestamp,
       acknowledged: acknowledged ?? this.acknowledged,
+      category: category ?? this.category,
     );
   }
 }

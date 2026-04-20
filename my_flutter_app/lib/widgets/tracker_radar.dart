@@ -10,13 +10,17 @@ import 'package:my_flutter_app/core/tracker_provider.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:provider/provider.dart';
 
+/// Outer radar ring never represents more than this distance (meters).
+const double _kRadarMaxRangeMeters = 200.0;
+
 double _dynamicMaxRangeMeters(Tracker t) {
+  final maxR = _kRadarMaxRangeMeters;
   final d = t.distance;
   if (d != null && d > 0) {
-    return (d * 1.45).clamp(8.0, 48.0);
+    return (d * 1.45).clamp(8.0, maxR);
   }
   final s = t.signalStrength.clamp(1, 100);
-  return (9.0 + (100 - s) * 0.33).clamp(9.0, 42.0);
+  return (9.0 + (100 - s) * (maxR - 9.0) / 99.0).clamp(9.0, maxR);
 }
 
 /// Radians: 0 = screen up, clockwise positive. Where magnetic north sits relative to phone top.
@@ -332,8 +336,10 @@ class _TrackerRadarPainter extends CustomPainter {
 
   double _normalizedRadius() {
     if (tracker.distance != null && tracker.distance! > 0) {
-      final d = tracker.distance!.clamp(0.05, maxRingMeters);
-      return (d / maxRingMeters).clamp(0.12, 1.0);
+      final ringM = maxRingMeters.clamp(0.0, _kRadarMaxRangeMeters);
+      if (ringM <= 0) return 0.45;
+      final d = tracker.distance!.clamp(0.05, ringM);
+      return (d / ringM).clamp(0.12, 1.0);
     }
     final s = tracker.signalStrength.clamp(1, 100);
     return (1.0 - (s / 100.0) * 0.88).clamp(0.12, 1.0);

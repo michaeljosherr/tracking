@@ -13,11 +13,11 @@ import 'package:my_flutter_app/screens/tracker_detail_screen.dart';
 import 'package:my_flutter_app/widgets/app_tab_shell.dart';
 import 'package:my_flutter_app/core/route_observers.dart';
 
-final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 GoRouter createRouter(AppPreferencesProvider preferencesProvider) {
   return GoRouter(
-    navigatorKey: _rootNavigatorKey,
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/',
     observers: [appRouteObserver],
     refreshListenable: preferencesProvider,

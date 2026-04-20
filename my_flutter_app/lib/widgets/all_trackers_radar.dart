@@ -12,13 +12,17 @@ import 'package:timeago/timeago.dart' as timeago;
 
 // --- Geometry (aligned with tracker_radar.dart) ---
 
+/// Outer radar ring never represents more than this distance (meters).
+const double _kRadarMaxRangeMeters = 200.0;
+
 double _dynamicMaxRangeMeters(Tracker t) {
+  final maxR = _kRadarMaxRangeMeters;
   final d = t.distance;
   if (d != null && d > 0) {
-    return (d * 1.45).clamp(8.0, 48.0);
+    return (d * 1.45).clamp(8.0, maxR);
   }
   final s = t.signalStrength.clamp(1, 100);
-  return (9.0 + (100 - s) * 0.33).clamp(9.0, 42.0);
+  return (9.0 + (100 - s) * (maxR - 9.0) / 99.0).clamp(9.0, maxR);
 }
 
 double _northRadFromDeviceHeading(double? headingDeg) {
@@ -68,9 +72,10 @@ double _blipBearingRad(
 /// (can be much smaller than the structural cap so nearby tags do not stack on one ring).
 double _normalizedRadiusForBlip(Tracker t, double displayMaxM) {
   if (displayMaxM <= 0) return 0.45;
+  final ringM = displayMaxM.clamp(0.0, _kRadarMaxRangeMeters);
   if (t.distance != null && t.distance! > 0) {
-    final d = t.distance!.clamp(0.05, displayMaxM * 1.02);
-    return (d / displayMaxM).clamp(0.06, 1.0);
+    final d = t.distance!.clamp(0.05, ringM);
+    return (d / ringM).clamp(0.06, 1.0);
   }
   final s = t.signalStrength.clamp(1, 100);
   return (1.0 - (s / 100.0) * 0.88).clamp(0.12, 1.0);
@@ -136,7 +141,7 @@ List<({Tracker tracker, double bearing, Offset pixelPos})> _calculateTrackerPosi
 
   for (var i = 0; i < trackers.length; i++) {
     final t = trackers[i];
-    final distance = t.distance?.clamp(0.1, 500.0) ?? 0.0;
+    final distance = t.distance?.clamp(0.1, _kRadarMaxRangeMeters) ?? 0.0;
     final pos = triangulation.calculatePosition(
       serial: t.serialNumber ?? t.id,
       distances: {'hub_0': distance},
@@ -272,7 +277,7 @@ class _AllTrackersRadarPanelState extends State<AllTrackersRadarPanel>
     for (final t in trackers) {
       structuralMax = math.max(structuralMax, _dynamicMaxRangeMeters(t));
     }
-    structuralMax = structuralMax.clamp(12.0, 72.0);
+    structuralMax = structuralMax.clamp(12.0, _kRadarMaxRangeMeters);
     final displayRing = _computeDisplayRingMeters(trackers, structuralMax);
     final scaleLabel = displayRing < 10
         ? displayRing.toStringAsFixed(1)

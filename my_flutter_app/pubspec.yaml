@@ -1,5 +1,5 @@
 name: my_flutter_app
-description: "A new Flutter project."
+description: "Pulse32 — ESP32 BLE tracker companion app."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -42,6 +42,7 @@ dependencies:
   flutter_blue_plus: ^1.31.12
   sensors_plus: ^7.0.0
   permission_handler: ^12.0.1
+  flutter_local_notifications: ^17.2.4
 
 dev_dependencies:
   flutter_test:
