@@ -98,6 +98,80 @@ Color _blipColor(int index, int total, Color primary, bool isDark) {
   return HSLColor.fromAHSL(1, h, 0.72, isDark ? 0.62 : 0.48).toColor();
 }
 
+// =============================================================================
+// Triangulation & Position Calculation
+// =============================================================================
+
+/// Calculate actual Cartesian positions of all trackers relative to phone (at origin).
+/// Returns list of (tracker, bearingRad, pixelPosition in radar space) tuples.
+/// Used for collision detection to ensure all trackers are visible on the radar.
+List<({Tracker tracker, double bearing, Offset pixelPos})> _calculateTrackerPositions(
+  List<Tracker> trackers,
+  double? deviceHeadingDeg,
+  double maxRingPixels,
+  double displayRingMeters,
+) {
+  final result = <({Tracker tracker, double bearing, Offset pixelPos})>[];
+
+  for (final t in trackers) {
+    var bearing = _blipBearingRad(t, deviceHeadingDeg);
+    final nr = _normalizedRadiusForBlip(t, displayRingMeters);
+    final pixelDist = maxRingPixels * nr;
+    final pixelPos = Offset(
+      pixelDist * math.sin(bearing),
+      -pixelDist * math.cos(bearing),
+    );
+    result.add((tracker: t, bearing: bearing, pixelPos: pixelPos));
+  }
+
+  return result;
+}
+
+/// Detect and resolve collisions between tracker blips.
+/// Returns adjusted bearing offsets for each tracker to prevent overlaps.
+/// Collision radius in pixels.
+List<double> _resolveBlipCollisions(
+  List<({Tracker tracker, double bearing, Offset pixelPos})> positions,
+  double collisionRadiusPx,
+) {
+  final offsets = List<double>.filled(positions.length, 0.0);
+  final n = positions.length;
+
+  if (n <= 1) return offsets;
+
+  // Simple iterative collision resolution:
+  // For each pair of overlapping blips, apply opposing bearing offsets
+  for (var iter = 0; iter < 3; iter++) {
+    for (var i = 0; i < n; i++) {
+      for (var j = i + 1; j < n; j++) {
+        final pi = positions[i].pixelPos + Offset(
+          positions[i].pixelPos.dx * offsets[i] * 0.05,
+          positions[i].pixelPos.dy * offsets[i] * 0.05,
+        );
+        final pj = positions[j].pixelPos + Offset(
+          positions[j].pixelPos.dx * offsets[j] * 0.05,
+          positions[j].pixelPos.dy * offsets[j] * 0.05,
+        );
+        final dist = (pi - pj).distance;
+
+        if (dist < collisionRadiusPx * 2.2) {
+          // Blips overlap - apply repulsive force
+          final separationNeeded = (collisionRadiusPx * 2.2 - dist) / collisionRadiusPx;
+          offsets[i] -= separationNeeded * 0.08;
+          offsets[j] += separationNeeded * 0.08;
+        }
+      }
+    }
+  }
+
+  // Clamp offsets to reasonable range
+  for (var i = 0; i < offsets.length; i++) {
+    offsets[i] = offsets[i].clamp(-0.35, 0.35);
+  }
+
+  return offsets;
+}
+
 /// Single radar scope showing every registered [Tracker] as its own blip.
 class AllTrackersRadarPanel extends StatefulWidget {
   const AllTrackersRadarPanel({super.key, required this.trackers});
@@ -694,15 +768,24 @@ class _MultiTrackerRadarPainter extends CustomPainter {
     final pulse = 1.0 + 0.06 * math.sin(sweepRadians * 3);
     final blipR = n > 4 ? 6.0 : 7.5;
 
+    // Calculate positions and resolve collisions using triangulation
+    final positions = _calculateTrackerPositions(
+      trackers,
+      deviceHeadingDeg,
+      maxR,
+      displayRingMeters,
+    );
+    final collisionOffsets = _resolveBlipCollisions(positions, blipR + 4.0);
+
     for (var i = 0; i < n; i++) {
       final t = trackers[i];
       final hueColor = _blipColor(i, n, primary, isDark);
       var bearing = _blipBearingRad(t, deviceHeadingDeg);
+      
+      // Apply collision offset to bearing for 3+ trackers
+      bearing += collisionOffsets[i];
+      
       final nr = _normalizedRadiusForBlip(t, displayRingMeters);
-      // Fan out overlapping near-center blips (same radius band)
-      if (n > 1 && nr < 0.34) {
-        bearing += (i - (n - 1) / 2.0) * 0.14;
-      }
       final br = maxR * nr * pulse;
       final blip = Offset(
         c.dx + br * math.sin(bearing),

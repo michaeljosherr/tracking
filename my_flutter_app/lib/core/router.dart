@@ -7,6 +7,7 @@ import 'package:my_flutter_app/screens/settings_screen.dart';
 import 'package:my_flutter_app/screens/onboarding_screen.dart';
 import 'package:my_flutter_app/screens/hub_select_screen.dart';
 import 'package:my_flutter_app/screens/hub_trackers_screen.dart';
+import 'package:my_flutter_app/screens/hub_page.dart';
 import 'package:my_flutter_app/screens/all_trackers_radar_screen.dart';
 import 'package:my_flutter_app/screens/tracker_detail_screen.dart';
 import 'package:my_flutter_app/widgets/app_tab_shell.dart';
@@ -88,15 +89,30 @@ GoRouter createRouter(AppPreferencesProvider preferencesProvider) {
         pageBuilder: (context, state) {
           final hubId = state.uri.queryParameters['hubId'];
           if (hubId == null || hubId.isEmpty) {
-            return const MaterialPage<void>(
-              child: Scaffold(
-                body: Center(child: Text('Missing hub')),
-              ),
+            return MaterialPage<void>(
+              key: state.pageKey,
+              child: const Center(child: Text('Missing hub')),
             );
           }
           return MaterialPage<void>(
             key: state.pageKey,
             child: HubTrackersScreen(hubBleId: hubId),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/hub/:hubId',
+        pageBuilder: (context, state) {
+          final hubId = state.pathParameters['hubId'];
+          if (hubId == null || hubId.isEmpty) {
+            return MaterialPage<void>(
+              key: state.pageKey,
+              child: const Center(child: Text('Missing hub ID')),
+            );
+          }
+          return MaterialPage<void>(
+            key: state.pageKey,
+            child: HubPage(hubBleId: hubId),
           );
         },
       ),

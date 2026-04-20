@@ -74,6 +74,46 @@ class TrackerProvider with ChangeNotifier {
   int get disconnectedCount =>
       _trackers.where((t) => t.status == TrackerStatus.disconnected).length;
 
+  /// Get trackers scoped to a specific hub
+  List<Tracker> getTrackersForHub(String hubBleId) {
+    return _trackers
+        .where((t) => t.bleAddress?.trim() == hubBleId.trim())
+        .toList();
+  }
+
+  /// Get all hubs (by their BLE IDs) that have trackers
+  List<String> getAllHubIds() {
+    final hubIds = <String>{};
+    for (final t in _trackers) {
+      if (t.bleAddress != null && t.bleAddress!.isNotEmpty) {
+        hubIds.add(t.bleAddress!);
+      }
+    }
+    return hubIds.toList()..sort();
+  }
+
+  /// Get count of trackers for a hub
+  int getTrackerCountForHub(String hubBleId) {
+    return _trackers.where((t) => t.bleAddress?.trim() == hubBleId.trim()).length;
+  }
+
+  /// Get connection status summary for a hub
+  ({int connected, int outOfRange, int disconnected}) getHubStatusSummary(String hubBleId) {
+    final hubTrackers = getTrackersForHub(hubBleId);
+    var connected = 0, outOfRange = 0, disconnected = 0;
+    for (final t in hubTrackers) {
+      switch (t.status) {
+        case TrackerStatus.connected:
+          connected++;
+        case TrackerStatus.outOfRange:
+          outOfRange++;
+        case TrackerStatus.disconnected:
+          disconnected++;
+      }
+    }
+    return (connected: connected, outOfRange: outOfRange, disconnected: disconnected);
+  }
+
   /// EMA + max step so the dashboard does not jump hundreds of meters on one bad RSSI sample.
   double? _smoothHubDistanceM(String serial, double? rawMeters) {
     if (rawMeters == null || rawMeters.isNaN || rawMeters.isInfinite) {

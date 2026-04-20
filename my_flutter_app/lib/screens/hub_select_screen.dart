@@ -31,18 +31,25 @@ class _HubSelectScreenState extends State<HubSelectScreen> with RouteAware {
   Timer? _scanDebounce;
   bool _routeAwareSubscribed = false;
 
-  void _scheduleScan() {
+  void _scheduleScan({Duration debounce = const Duration(milliseconds: 160)}) {
     _scanDebounce?.cancel();
-    _scanDebounce = Timer(const Duration(milliseconds: 160), () {
+    if (debounce.inMilliseconds == 0) {
+      // Scan immediately without debounce
       if (!mounted) return;
       unawaited(context.read<TrackerProvider>().scanForHubs());
-    });
+    } else {
+      _scanDebounce = Timer(debounce, () {
+        if (!mounted) return;
+        unawaited(context.read<TrackerProvider>().scanForHubs());
+      });
+    }
   }
 
   @override
   void initState() {
     super.initState();
-    _scheduleScan();
+    // Scan immediately when page loads - don't debounce
+    _scheduleScan(debounce: Duration.zero);
   }
 
   @override
@@ -70,7 +77,14 @@ class _HubSelectScreenState extends State<HubSelectScreen> with RouteAware {
   /// Fires when a route pushed on top of hub select (e.g. add trackers) is popped.
   @override
   void didPopNext() {
-    _scheduleScan();
+    // When returning from hub trackers screen (after hub reset), scan immediately
+    // without debounce to quickly rediscover the hub that just restarted advertising.
+    // Add small delay to ensure dedicated hub stream has stopped before scanning.
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        _scheduleScan(debounce: Duration.zero);
+      }
+    });
   }
 
   void _openHub(DiscoveredHub hub) {
