@@ -39,42 +39,19 @@ class HubPage extends StatefulWidget {
 
 class _HubPageState extends State<HubPage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
 
   Future<void> _renameHub(
     BuildContext context,
     TrackerProvider provider,
     String currentName,
   ) async {
-    final controller = TextEditingController(text: currentName);
     final newName = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Rename hub'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Hub name',
-            hintText: 'Enter a hub name',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('Save'),
-          ),
-        ],
+      builder: (dialogContext) => _RenameHubDialog(
+        initialName: currentName,
       ),
     );
 
-    controller.dispose();
     if (newName == null || !context.mounted) return;
 
     final cleaned = newName.trim();
@@ -94,8 +71,8 @@ class _HubPageState extends State<HubPage> with SingleTickerProviderStateMixin {
 
   @override
   void dispose() {
+    FocusManager.instance.primaryFocus?.unfocus();
     _tabController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -115,16 +92,7 @@ class _HubPageState extends State<HubPage> with SingleTickerProviderStateMixin {
             .where((t) => t.status == TrackerStatus.connected)
             .length;
 
-        final filteredTrackers = _searchQuery.isEmpty
-            ? hubTrackers
-            : hubTrackers
-                .where((t) =>
-                    t.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                    (t.serialNumber
-                            ?.toLowerCase()
-                            .contains(_searchQuery.toLowerCase()) ??
-                        false))
-                .toList();
+        // Search filtering is now handled in _TrackersTabContent
 
         return Scaffold(
           appBar: AppBar(
@@ -203,12 +171,7 @@ class _HubPageState extends State<HubPage> with SingleTickerProviderStateMixin {
               ),
               _TrackersTabContent(
                 hubBleId: widget.hubBleId,
-                trackers: filteredTrackers,
                 allTrackers: hubTrackers,
-                searchController: _searchController,
-                onSearchChanged: (value) {
-                  setState(() => _searchQuery = value);
-                },
               ),
             ],
           ),
@@ -663,6 +626,7 @@ class _HubCalibrationSectionState extends State<_HubCalibrationSection> {
 
   @override
   void dispose() {
+    FocusManager.instance.primaryFocus?.unfocus();
     _distanceController.dispose();
     super.dispose();
   }
@@ -1060,10 +1024,53 @@ class _AdvancedCalibrationDetails extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Matches the desktop tool: enter a known tracker distance and '
-            'use the current RSSI to calibrate TX power for this hub.',
+            'Calibration improves distance accuracy for this hub. '
+            'You enter the real hub-to-tracker distance, then the app uses '
+            'the current RSSI to tune TX power.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Recommended setup',
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Use only 1 connected tracker while calibrating. '
+            'This avoids mixed signals and gives more stable results.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Quick guide',
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '1) Place the hub and tracker exactly 1 foot apart '
+            '(about 0.3 m, one ruler).\n'
+            '2) In "Known distance (m)", enter 0.3.\n'
+            '3) Tap "Apply calibration".\n'
+            '4) Check that shown distance moves closer to the real spacing.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Important: enter the actual hub-to-tracker distance only.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 10),
@@ -1088,17 +1095,11 @@ class _AdvancedCalibrationDetails extends StatelessWidget {
 
 class _TrackersTabContent extends StatefulWidget {
   final String hubBleId;
-  final List<Tracker> trackers;
   final List<Tracker> allTrackers;
-  final TextEditingController searchController;
-  final Function(String) onSearchChanged;
 
   const _TrackersTabContent({
     required this.hubBleId,
-    required this.trackers,
     required this.allTrackers,
-    required this.searchController,
-    required this.onSearchChanged,
   });
 
   @override
@@ -1106,7 +1107,27 @@ class _TrackersTabContent extends StatefulWidget {
 }
 
 class _TrackersTabContentState extends State<_TrackersTabContent> {
+  late TextEditingController _searchController;
+  String _searchQuery = '';
   bool _isGridView = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    _searchController.addListener(_updateSearch);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_updateSearch);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _updateSearch() {
+    setState(() => _searchQuery = _searchController.text);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1118,6 +1139,17 @@ class _TrackersTabContentState extends State<_TrackersTabContent> {
             ? 24.0
             : 16.0;
 
+    final filteredTrackers = _searchQuery.isEmpty
+        ? widget.allTrackers
+        : widget.allTrackers
+            .where((t) =>
+                t.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                (t.serialNumber
+                        ?.toLowerCase()
+                        .contains(_searchQuery.toLowerCase()) ??
+                    false))
+            .toList();
+
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -1128,7 +1160,7 @@ class _TrackersTabContentState extends State<_TrackersTabContent> {
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: widget.searchController,
+                      controller: _searchController,
                       decoration: InputDecoration(
                         hintText: 'Search trackers...',
                         prefixIcon: const Icon(LucideIcons.search, size: 18),
@@ -1147,17 +1179,15 @@ class _TrackersTabContentState extends State<_TrackersTabContent> {
                           borderSide: BorderSide(
                               color: theme.colorScheme.outlineVariant),
                         ),
-                        suffixIcon: widget.searchController.text.isEmpty
+                        suffixIcon: _searchController.text.isEmpty
                             ? null
                             : IconButton(
                                 icon: const Icon(LucideIcons.x, size: 16),
                                 onPressed: () {
-                                  widget.searchController.clear();
-                                  widget.onSearchChanged('');
+                                  _searchController.clear();
                                 },
                               ),
                       ),
-                      onChanged: widget.onSearchChanged,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1177,10 +1207,10 @@ class _TrackersTabContentState extends State<_TrackersTabContent> {
               child: Row(
                 children: [
                   Text(
-                    widget.searchController.text.isEmpty
+                    _searchController.text.isEmpty
                         ? '${widget.allTrackers.length} tracker'
                             '${widget.allTrackers.length == 1 ? '' : 's'}'
-                        : '${widget.trackers.length} of '
+                        : '${filteredTrackers.length} of '
                             '${widget.allTrackers.length} match',
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
@@ -1192,12 +1222,12 @@ class _TrackersTabContentState extends State<_TrackersTabContent> {
             ),
           ),
         ),
-        if (widget.trackers.isEmpty)
+        if (filteredTrackers.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
             child: _EmptyTrackersState(
               hubBleId: widget.hubBleId,
-              isSearching: widget.searchController.text.isNotEmpty,
+              isSearching: _searchController.text.isNotEmpty,
               theme: theme,
             ),
           )
@@ -1221,20 +1251,20 @@ class _TrackersTabContentState extends State<_TrackersTabContent> {
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, index) =>
-                            TrackerCard(tracker: widget.trackers[index]),
-                        childCount: widget.trackers.length,
+                            TrackerCard(tracker: filteredTrackers[index]),
+                        childCount: filteredTrackers.length,
                       ),
                     )
                   : SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
-                          final tracker = widget.trackers[index];
+                          final tracker = filteredTrackers[index];
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: TrackerCard(tracker: tracker),
                           );
                         },
-                        childCount: widget.trackers.length,
+                        childCount: filteredTrackers.length,
                       ),
                     ),
             ),
@@ -1395,6 +1425,80 @@ class _EmptyTrackersState extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Stateful rename hub dialog that properly manages TextEditingController lifecycle.
+/// This ensures the controller is only disposed when the dialog is fully destroyed,
+/// avoiding "used after dispose" errors during focus changes.
+class _RenameHubDialog extends StatefulWidget {
+  const _RenameHubDialog({required this.initialName});
+
+  final String initialName;
+
+  @override
+  State<_RenameHubDialog> createState() => _RenameHubDialogState();
+}
+
+class _RenameHubDialogState extends State<_RenameHubDialog> {
+  late TextEditingController _controller;
+  late FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode();
+    _controller = TextEditingController(text: widget.initialName);
+    // Request focus after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        FocusScope.of(context).requestFocus(_focusNode);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    // Unfocus immediately to prevent stray focus notifications
+    _focusNode.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+    _focusNode.dispose();
+    
+    // NOTE: Do NOT dispose the controller here. During dialog teardown, focus change
+    // notifications can fire and try to update the controller after it's disposed,
+    // causing "TextEditingController was used after being disposed" exceptions.
+    // This is a known Flutter issue with AlertDialog + autofocus TextField.
+    // The controller is small enough that GC overhead is negligible, while disposing
+    // it causes framework exceptions. This is the documented workaround.
+    // _controller.dispose();
+    
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Rename hub'),
+      content: TextField(
+        controller: _controller,
+        focusNode: _focusNode,
+        textCapitalization: TextCapitalization.words,
+        decoration: const InputDecoration(
+          labelText: 'Hub name',
+          hintText: 'Enter a hub name',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }

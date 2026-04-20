@@ -97,7 +97,11 @@ class HubCard extends StatelessWidget {
       ),
     );
 
-    controller.dispose();
+    // Do NOT dispose the controller here. showDialog completes immediately on pop,
+    // but the dialog is still animating out. Disposing the controller here causes
+    // "TextEditingController was used after being disposed" exceptions.
+    // controller.dispose();
+    
     if (newName == null || !context.mounted) return;
 
     final cleaned = newName.trim();

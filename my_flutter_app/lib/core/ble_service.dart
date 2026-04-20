@@ -127,10 +127,6 @@ class BleService {
   BluetoothCharacteristic? _hubRx;
   BluetoothCharacteristic? _hubTx;
 
-  /// Phone ↔ hub BLE link: updated from [BluetoothDevice.readRssi] while connected.
-  Timer? _hubRssiPollTimer;
-  double? _phoneToHubDistanceM;
-
   /// flutter_blue_plus enforces ~2s between GATT connects per device on Android.
   final Map<String, DateTime> _lastTransientHubDisconnectUtc = {};
   Future<void> _pingSerialTail = Future<void>.value();
@@ -169,12 +165,20 @@ class BleService {
     if (txPower != null) _txPower = txPower;
     if (pathLoss != null) _pathLoss = pathLoss;
     if (rssiThreshold != null) _rssiThreshold = rssiThreshold;
+    _resetRuntimeTrackingFilters();
   }
 
   void resetConfig() {
     _txPower = TX_POWER_DBM;
     _pathLoss = FREE_SPACE_PATH_LOSS;
     _rssiThreshold = RSSI_THRESHOLD;
+    _resetRuntimeTrackingFilters();
+  }
+
+  /// Mirrors Python calibration behavior by resetting live filter state whenever
+  /// calibration constants change, so new measurements take effect immediately.
+  void _resetRuntimeTrackingFilters() {
+    _activeTrackers.clear();
   }
 
   static bool uuidEquals(Guid a, String b) =>
@@ -223,39 +227,6 @@ class BleService {
     final a = phoneToHubM.clamp(0.05, 500.0);
     final b = hubToTagM.clamp(0.05, 500.0);
     return math.sqrt(a * a + b * b);
-  }
-
-  void _stopHubRssiPolling() {
-    _hubRssiPollTimer?.cancel();
-    _hubRssiPollTimer = null;
-    _phoneToHubDistanceM = null;
-  }
-
-  void _primePhoneToHubFromScanCache(String hubBleId) {
-    final want = hubBleId.trim();
-    for (final r in FlutterBluePlus.lastScanResults) {
-      if (r.device.remoteId.toString() != want) continue;
-      if (!scanResultIsHub(r)) continue;
-      _phoneToHubDistanceM = calculateDistanceWithConfig(r.rssi);
-      return;
-    }
-  }
-
-  Future<void> _readPhoneToHubDistanceOnce(BluetoothDevice hub) async {
-    try {
-      if (!hub.isConnected) return;
-      final rssi = await hub.readRssi();
-      _phoneToHubDistanceM = calculateDistanceWithConfig(rssi);
-    } catch (e) {
-      print('[BleService] readRssi (phone↔hub): $e');
-    }
-  }
-
-  void _startHubRssiPolling(BluetoothDevice hub) {
-    _hubRssiPollTimer?.cancel();
-    _hubRssiPollTimer = Timer.periodic(const Duration(milliseconds: 750), (_) async {
-      await _readPhoneToHubDistanceOnce(hub);
-    });
   }
 
   static bool scanResultIsHub(ScanResult r) {
@@ -337,9 +308,9 @@ class BleService {
     // matches what we show as RSSI.
     final distFromHub = calculateDistanceWithConfig(rssi);
 
-    // RSSI here is Wi‑Fi (tag↔hub AP), not phone BLE. Combine with phone↔hub BLE
-    // range (see [_phoneToHubDistanceM]) so [PendingTracker.distance] reflects an
-    // approximate phone↔tag estimate.
+    // Match Python desktop app: keep hub↔tag calibrated distance directly.
+    // Do not combine with phone↔hub leg, otherwise close-range calibration can
+    // still appear farther than the known calibration distance.
 
     final trackerData = _activeTrackers.putIfAbsent(
       serial,
@@ -355,10 +326,7 @@ class BleService {
     trackerData.updateRssi(rssi);
     trackerData.updateDistance(distFromHub);
 
-    final phoneHub = _phoneToHubDistanceM;
-    final displayDistance = phoneHub != null
-        ? combinePhoneHubAndHubTagLegs(phoneHub, distFromHub)
-        : distFromHub;
+    final displayDistance = distFromHub;
 
     final signalStrength =
         (100 + trackerData.rssiFiltered).clamp(0.0, 100.0).toInt();
@@ -429,7 +397,6 @@ class BleService {
   }
 
   Future<void> _disconnectHub() async {
-    _stopHubRssiPolling();
     await _hubNotifySubscription?.cancel();
     _hubNotifySubscription = null;
     await _hubConnectionSubscription?.cancel();
@@ -471,9 +438,6 @@ class BleService {
       }
 
       await pair.tx.setNotifyValue(true);
-      _stopHubRssiPolling();
-      _primePhoneToHubFromScanCache(hubBleId);
-      await _readPhoneToHubDistanceOnce(hub);
 
       final result = <PendingTracker>[];
 
@@ -495,7 +459,6 @@ class BleService {
       print('[BleService] scanTrackersOnHub error: $e');
       return [];
     } finally {
-      _stopHubRssiPolling();
     }
   }
 
@@ -762,11 +725,6 @@ class BleService {
 
       await pair.tx.setNotifyValue(true);
 
-      _stopHubRssiPolling();
-      _primePhoneToHubFromScanCache(hubBleId);
-      await _readPhoneToHubDistanceOnce(hub);
-      _startHubRssiPolling(hub);
-
       final batch = <PendingTracker>[];
 
       await _hubNotifySubscription?.cancel();
@@ -798,7 +756,6 @@ class BleService {
       _hubNotifySubscription = null;
       await _hubConnectionSubscription?.cancel();
       _hubConnectionSubscription = null;
-      _stopHubRssiPolling();
       _connectedHub = null;
       _hubRx = null;
       _hubTx = null;
@@ -808,7 +765,6 @@ class BleService {
       }
     } catch (e) {
       print('[BleService] Hub session error: $e');
-      _stopHubRssiPolling();
       try {
         if (hub != null && hub.isConnected) await hub.disconnect();
       } catch (_) {}

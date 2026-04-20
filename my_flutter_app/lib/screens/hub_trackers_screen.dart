@@ -109,32 +109,6 @@ class _HubTrackersScreenState extends State<HubTrackersScreen> {
     );
   }
 
-  Future<void> _confirmRemoveHub(BuildContext context) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Remove hub?'),
-        content: const Text(
-          'This removes this hub from Connections and deletes all trackers registered to it on this phone. '
-          'Other hubs are not affected.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !context.mounted) return;
-    await context.read<TrackerProvider>().removeHubConnection(widget.hubBleId);
-    if (context.mounted) context.pop();
-  }
-
   String _registeredSignature(TrackerProvider p) {
     final onHub =
         p.trackers.where((t) => t.bleAddress == widget.hubBleId).toList()
@@ -210,22 +184,20 @@ class _HubTrackersScreenState extends State<HubTrackersScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  'Tags seen on this hub',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2.2),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'This screen scans Bluetooth, then connects to the hub (like the desktop tool). '
-                  'Only tags that have joined the hub Wi‑Fi and are sending heartbeats appear here.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.35,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    "You're currently scanning for trackers",
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -324,16 +296,6 @@ class _HubTrackersScreenState extends State<HubTrackersScreen> {
                     ],
                   ),
           ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: OutlinedButton.icon(
-                onPressed: () => _confirmRemoveHub(context),
-                icon: const Icon(LucideIcons.trash2),
-                label: const Text('Remove hub from Connections'),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -362,7 +324,12 @@ class _RegisterDialogState extends State<_RegisterDialog> {
 
   @override
   void dispose() {
-    _nameController.dispose();
+    // Prevent EditableText from pushing updates to a disposed controller.
+    FocusManager.instance.primaryFocus?.unfocus();
+    // Do NOT dispose the controller here. During dialog teardown, focus change
+    // notifications can fire and try to update the controller after it's disposed,
+    // causing "TextEditingController was used after being disposed" exceptions.
+    // _nameController.dispose();
     super.dispose();
   }
 
