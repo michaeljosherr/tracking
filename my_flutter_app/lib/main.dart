@@ -95,7 +95,7 @@ class _MyAppState extends State<MyApp> {
               final router = createRouter(preferencesProvider);
 
               return MaterialApp.router(
-                title: 'ESP Tracker',
+                title: 'Pulse32',
                 debugShowCheckedModeBanner: false,
                 theme: AppThemes.lightTheme,
                 darkTheme: AppThemes.darkTheme,
