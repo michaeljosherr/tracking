@@ -3,8 +3,10 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:my_flutter_app/core/ble_service.dart';
+import 'package:my_flutter_app/core/distance_kalman_filter.dart';
 import 'package:my_flutter_app/core/device_heading_listener.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -26,6 +28,26 @@ enum HubConnectionStatus {
   disconnected,
 }
 
+class HubCalibrationResult {
+  const HubCalibrationResult({
+    required this.hubBleId,
+    required this.trackerName,
+    required this.trackerSerial,
+    required this.rssi,
+    required this.knownDistanceM,
+    required this.pathLoss,
+    required this.txPower,
+  });
+
+  final String hubBleId;
+  final String trackerName;
+  final String trackerSerial;
+  final int rssi;
+  final double knownDistanceM;
+  final double pathLoss;
+  final double txPower;
+}
+
 class TrackerProvider with ChangeNotifier {
   final List<Tracker> _trackers = [];
   final List<Alert> _alerts = List.from(mockAlerts);
@@ -36,6 +58,7 @@ class TrackerProvider with ChangeNotifier {
   List<DiscoveredHub> _discoveredHubs = [];
   final Set<String> _savedHubBleIds = {};
   final Map<String, HubConnectionStatus> _hubStatuses = {};
+  final Map<String, String> _hubNames = {};
 
   bool _isBackgroundScanning = false;
   final Set<String> _pingingDevices = {};
@@ -43,8 +66,7 @@ class TrackerProvider with ChangeNotifier {
 
   final Map<String, int> _autoBearingCloseStreak = {};
 
-  /// Smooths hub-reported distance (WiFi RSSI path-loss is noisy; raw values can jump to 200–400 m).
-  final Map<String, double> _distanceEmaBySerial = {};
+  final Map<String, DistanceKalmanFilter> _distanceFiltersBySerial = {};
 
   static const double _autoBearingMaxDistanceM = 1.2;
   static const int _autoBearingMinRssiDbm = -58;
@@ -52,6 +74,8 @@ class TrackerProvider with ChangeNotifier {
 
   static const String _trackersStorageKey = 'registered_trackers';
   static const String _hubIdsStorageKey = 'saved_hub_ble_ids';
+  static const String _hubNamesStorageKey = 'saved_hub_names';
+  static const String _scannerConfigStorageKey = 'scanner_config';
   static const int _offlineThresholdSeconds = 20;
 
   List<Tracker> get trackers => _trackers;
@@ -83,6 +107,14 @@ class TrackerProvider with ChangeNotifier {
 
   HubConnectionStatus getHubConnectionStatus(String hubBleId) {
     return _hubStatuses[hubBleId.trim()] ?? HubConnectionStatus.disconnected;
+  }
+
+  String getHubDisplayName(String hubBleId, {String? fallbackName}) {
+    final saved = _hubNames[hubBleId.trim()];
+    if (saved != null && saved.trim().isNotEmpty) {
+      return saved.trim();
+    }
+    return fallbackName ?? hubBleId;
   }
 
   /// Get trackers scoped to a specific hub
@@ -125,28 +157,6 @@ class TrackerProvider with ChangeNotifier {
     return (connected: connected, outOfRange: outOfRange, disconnected: disconnected);
   }
 
-  /// EMA + max step so the dashboard does not jump hundreds of meters on one bad RSSI sample.
-  double? _smoothHubDistanceM(String serial, double? rawMeters) {
-    if (rawMeters == null || rawMeters.isNaN || rawMeters.isInfinite) {
-      return rawMeters;
-    }
-    final prev = _distanceEmaBySerial[serial];
-    if (prev == null) {
-      final v = rawMeters.clamp(0.05, 500.0);
-      _distanceEmaBySerial[serial] = v;
-      return v;
-    }
-    var target = rawMeters.clamp(0.05, 500.0);
-    const maxStepM = 14.0;
-    if ((target - prev).abs() > maxStepM) {
-      target = prev + maxStepM * (target > prev ? 1 : -1);
-    }
-    const alpha = 0.22;
-    final next = prev + alpha * (target - prev);
-    _distanceEmaBySerial[serial] = next;
-    return next;
-  }
-
   List<String> _distinctHubBleIdsForBackground() {
     final s = <String>{..._savedHubBleIds};
     for (final t in _trackers) {
@@ -158,6 +168,7 @@ class TrackerProvider with ChangeNotifier {
   Future<void> initialize() async {
     await _loadTrackers();
     await _loadHubIds();
+    await _loadScannerConfig();
     print('[TrackerProvider] Initialized with ${_trackers.length} saved tracker(s)');
 
     if (_trackers.isNotEmpty) {
@@ -201,9 +212,19 @@ class TrackerProvider with ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final list = prefs.getStringList(_hubIdsStorageKey) ?? [];
+      final namesJson = prefs.getString(_hubNamesStorageKey);
       _savedHubBleIds
         ..clear()
         ..addAll(list);
+      _hubNames
+        ..clear()
+        ..addAll(
+          namesJson == null
+              ? const <String, String>{}
+              : (jsonDecode(namesJson) as Map<String, dynamic>).map(
+                  (key, value) => MapEntry(key.trim(), value.toString()),
+                ),
+        );
       for (final t in _trackers) {
         if (t.bleAddress != null) {
           _savedHubBleIds.add(t.bleAddress!);
@@ -224,8 +245,41 @@ class TrackerProvider with ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_hubIdsStorageKey, _savedHubBleIds.toList());
+      await prefs.setString(_hubNamesStorageKey, jsonEncode(_hubNames));
     } catch (e) {
       print('[TrackerProvider] Error saving hub ids: $e');
+    }
+  }
+
+  Future<void> _loadScannerConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_scannerConfigStorageKey);
+      if (raw == null || raw.isEmpty) return;
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      _ble.setConfig(
+        txPower: (json['txPower'] as num?)?.toDouble(),
+        pathLoss: (json['pathLoss'] as num?)?.toDouble(),
+        rssiThreshold: (json['rssiThreshold'] as num?)?.toInt(),
+      );
+    } catch (e) {
+      print('[TrackerProvider] Error loading scanner config: $e');
+    }
+  }
+
+  Future<void> _saveScannerConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _scannerConfigStorageKey,
+        jsonEncode({
+          'txPower': _ble.txPower,
+          'pathLoss': _ble.pathLoss,
+          'rssiThreshold': _ble.rssiThreshold,
+        }),
+      );
+    } catch (e) {
+      print('[TrackerProvider] Error saving scanner config: $e');
     }
   }
 
@@ -269,12 +323,38 @@ class TrackerProvider with ChangeNotifier {
       pathLoss: pathLoss,
       rssiThreshold: rssiThreshold,
     );
+    _distanceFiltersBySerial.clear();
+    _recalculateTrackerDistances();
+    unawaited(_saveScannerConfig());
     notifyListeners();
   }
 
   void resetScannerConfig() {
     _ble.resetConfig();
+    _distanceFiltersBySerial.clear();
+    _recalculateTrackerDistances();
+    unawaited(_saveScannerConfig());
     notifyListeners();
+  }
+
+  void resetDistanceKalmanFilters() {
+    _distanceFiltersBySerial.clear();
+    notifyListeners();
+  }
+
+  void _recalculateTrackerDistances() {
+    for (var i = 0; i < _trackers.length; i++) {
+      final tracker = _trackers[i];
+      final rssi = tracker.rssi;
+      if (rssi == null) continue;
+      _trackers[i] = tracker.copyWith(
+        distance: BleService.calculateDistance(
+          rssi,
+          txPower: _ble.txPower,
+          pathLoss: _ble.pathLoss,
+        ),
+      );
+    }
   }
 
   /// Serializes hub discovery so concurrent calls (init + pop + refresh) cannot
@@ -375,6 +455,54 @@ class TrackerProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> renameHub(String hubBleId, String newName) async {
+    final key = hubBleId.trim();
+    final cleaned = newName.trim();
+    if (cleaned.isEmpty) return;
+    if (_hubNames[key] == cleaned) return;
+    _hubNames[key] = cleaned;
+    await _saveHubIds();
+    notifyListeners();
+  }
+
+  Future<HubCalibrationResult> calibrateHubTxPower({
+    required String hubBleId,
+    required double knownDistanceM,
+  }) async {
+    if (knownDistanceM <= 0 || knownDistanceM > 1000) {
+      throw ArgumentError('Distance must be between 0 and 1000 meters.');
+    }
+
+    final candidates = getTrackersForHub(hubBleId)
+        .where((t) => t.status == TrackerStatus.connected && t.rssi != null)
+        .toList()
+      ..sort((a, b) => (b.rssi ?? -999).compareTo(a.rssi ?? -999));
+
+    if (candidates.isEmpty) {
+      throw StateError(
+        'No connected trackers with RSSI are available on this hub.',
+      );
+    }
+
+    final tracker = candidates.first;
+    final rssi = tracker.rssi!;
+    final pathLoss = _ble.pathLoss;
+    final txPower =
+        rssi + 10 * pathLoss * math.log(knownDistanceM) / math.ln10;
+
+    setScannerConfig(txPower: txPower);
+
+    return HubCalibrationResult(
+      hubBleId: hubBleId,
+      trackerName: tracker.name,
+      trackerSerial: tracker.serialNumber ?? tracker.id,
+      rssi: rssi,
+      knownDistanceM: knownDistanceM,
+      pathLoss: pathLoss,
+      txPower: txPower,
+    );
+  }
+
   /// Remove hub and all trackers tied to it. Frees serials for other hubs.
   Future<void> removeHubConnection(String hubBleId) async {
     await stopDedicatedHubStream();
@@ -382,9 +510,10 @@ class TrackerProvider with ChangeNotifier {
 
     _savedHubBleIds.remove(hubBleId);
     _hubStatuses.remove(hubBleId.trim());
+    _hubNames.remove(hubBleId.trim());
     for (final t in _trackers.where((x) => x.bleAddress == hubBleId)) {
       if (t.serialNumber != null) {
-        _distanceEmaBySerial.remove(t.serialNumber!);
+        _distanceFiltersBySerial.remove(t.serialNumber!);
       }
     }
     _trackers.removeWhere((t) => t.bleAddress == hubBleId);
@@ -486,9 +615,15 @@ class TrackerProvider with ChangeNotifier {
       if (index != -1) {
         final tracker = _trackers[index];
         final serial = tracker.serialNumber ?? '';
-        final dist = serial.isNotEmpty
-            ? _smoothHubDistanceM(serial, scanned.distance)
-            : scanned.distance;
+        final rawDistance = scanned.distance;
+        double? dist = rawDistance;
+        if (rawDistance != null && serial.isNotEmpty) {
+          final filter = _distanceFiltersBySerial.putIfAbsent(
+            serial,
+            () => DistanceKalmanFilter(initialDistance: rawDistance),
+          );
+          dist = filter.update(rawDistance);
+        }
         var updatedTracker = tracker.copyWith(
           rssi: scanned.rssi,
           rssiFiltered: scanned.rssiFiltered,
@@ -717,7 +852,8 @@ class TrackerProvider with ChangeNotifier {
     final t = getTracker(id);
     _autoBearingCloseStreak.remove(id);
     if (t?.serialNumber != null) {
-      _distanceEmaBySerial.remove(t!.serialNumber!);
+      final serial = t!.serialNumber!;
+      _distanceFiltersBySerial.remove(serial);
     }
     _trackers.removeWhere((x) => x.id == id);
 

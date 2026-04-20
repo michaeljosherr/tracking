@@ -86,7 +86,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             final trackerCount = trackers.length;
                             
                             // Generate display name
-                            final displayName = 'Hub ${index + 1}';
+                            final displayName = trackerProvider.getHubDisplayName(
+                              hubBleId,
+                              fallbackName: 'Hub ${index + 1}',
+                            );
                             final firstTracker = trackers.isNotEmpty ? trackers.first : null;
                             final connectedAt = firstTracker?.lastSeen ?? DateTime.now();
 

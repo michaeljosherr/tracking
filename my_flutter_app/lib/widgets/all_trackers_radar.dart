@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:my_flutter_app/core/device_heading_listener.dart';
+import 'package:my_flutter_app/core/triangulation_engine.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
@@ -25,7 +26,29 @@ double _northRadFromDeviceHeading(double? headingDeg) {
   return (360.0 - h) * math.pi / 180.0;
 }
 
-double _blipBearingRad(Tracker tracker, double? deviceHeadingDeg) {
+double _fallbackTriangulationBearingRad(
+  Tracker tracker,
+  int index,
+  int totalCount,
+) {
+  final key = tracker.serialNumber ?? tracker.id;
+  final hashDeg = key.hashCode.abs() % 360;
+  var baseAngle = hashDeg * math.pi / 180.0;
+
+  if (totalCount > 1) {
+    final spread = (index / totalCount) * 0.3;
+    baseAngle += spread;
+  }
+
+  return baseAngle % (2 * math.pi);
+}
+
+double _blipBearingRad(
+  Tracker tracker,
+  double? deviceHeadingDeg, {
+  required int index,
+  required int totalCount,
+}) {
   final T = tracker.tagCompassBearingDeg;
   final H = deviceHeadingDeg;
   if (T != null && H != null) {
@@ -38,10 +61,7 @@ double _blipBearingRad(Tracker tracker, double? deviceHeadingDeg) {
     }
     return d * math.pi / 180.0;
   }
-  final key = tracker.serialNumber ?? tracker.id;
-  final h = key.hashCode;
-  final t = (h.abs() % 10000) / 10000.0;
-  return t * 2 * math.pi;
+  return _fallbackTriangulationBearingRad(tracker, index, totalCount);
 }
 
 /// Normalized radius [0..1] for blip position; [displayMaxM] is the **visual** outer ring
@@ -112,10 +132,34 @@ List<({Tracker tracker, double bearing, Offset pixelPos})> _calculateTrackerPosi
   double displayRingMeters,
 ) {
   final result = <({Tracker tracker, double bearing, Offset pixelPos})>[];
+  final triangulation = TriangulationEngine();
 
-  for (final t in trackers) {
-    var bearing = _blipBearingRad(t, deviceHeadingDeg);
-    final nr = _normalizedRadiusForBlip(t, displayRingMeters);
+  for (var i = 0; i < trackers.length; i++) {
+    final t = trackers[i];
+    final distance = t.distance?.clamp(0.1, 500.0) ?? 0.0;
+    final pos = triangulation.calculatePosition(
+      serial: t.serialNumber ?? t.id,
+      distances: {'hub_0': distance},
+      trackerIndex: i,
+      totalTrackers: trackers.length,
+    );
+    var bearing = math.atan2(pos.y, pos.x);
+    if (bearing < 0) bearing += 2 * math.pi;
+
+    // Keep compass-aware orientation when tag bearing lock is available.
+    if (t.tagCompassBearingDeg != null && deviceHeadingDeg != null) {
+      bearing = _blipBearingRad(
+        t,
+        deviceHeadingDeg,
+        index: i,
+        totalCount: trackers.length,
+      );
+    }
+
+    final radialMeters = math.sqrt(pos.x * pos.x + pos.y * pos.y);
+    final nr = displayRingMeters <= 0
+        ? 0.45
+        : (radialMeters / displayRingMeters).clamp(0.06, 1.0);
     final pixelDist = maxRingPixels * nr;
     final pixelPos = Offset(
       pixelDist * math.sin(bearing),
@@ -780,7 +824,12 @@ class _MultiTrackerRadarPainter extends CustomPainter {
     for (var i = 0; i < n; i++) {
       final t = trackers[i];
       final hueColor = _blipColor(i, n, primary, isDark);
-      var bearing = _blipBearingRad(t, deviceHeadingDeg);
+      var bearing = _blipBearingRad(
+        t,
+        deviceHeadingDeg,
+        index: i,
+        totalCount: n,
+      );
       
       // Apply collision offset to bearing for 3+ trackers
       bearing += collisionOffsets[i];

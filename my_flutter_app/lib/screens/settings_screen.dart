@@ -13,6 +13,96 @@ import 'package:provider/provider.dart';
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
+  Future<void> _renameHub(
+    BuildContext context,
+    TrackerProvider trackerProvider,
+    String hubBleId,
+  ) async {
+    final currentName = trackerProvider.getHubDisplayName(
+      hubBleId,
+      fallbackName: 'Hub',
+    );
+    final controller = TextEditingController(text: currentName);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Rename hub'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Hub name',
+            hintText: 'Enter a hub name',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+    if (newName == null || !context.mounted) return;
+
+    final cleaned = newName.trim();
+    if (cleaned.isEmpty || cleaned == currentName) return;
+
+    await trackerProvider.renameHub(hubBleId, cleaned);
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Hub renamed to $cleaned'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _removeHub(
+    BuildContext context,
+    TrackerProvider trackerProvider,
+    String hubBleId,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove hub?'),
+        content: const Text(
+          'Deletes this hub and every tracker registered to it on this device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+
+    await trackerProvider.removeHubConnection(hubBleId);
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Hub removed'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -102,46 +192,50 @@ class SettingsScreen extends StatelessWidget {
                                       icon: LucideIcons.radioTower,
                                       iconColor: const Color(0xFF0D9488),
                                       backgroundColor: const Color(0xFFCCFBF1),
-                                      title: 'Hub',
+                                      title: trackerProvider.getHubDisplayName(
+                                        id,
+                                        fallbackName: 'Hub',
+                                      ),
                                       subtitle: id,
-                                      onTap: () async {
-                                        final ok = await showDialog<bool>(
-                                          context: context,
-                                          builder: (ctx) => AlertDialog(
-                                            title: const Text('Remove hub?'),
-                                            content: const Text(
-                                              'Deletes this hub and every tracker registered to it on this device.',
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx, false),
-                                                child: const Text('Cancel'),
-                                              ),
-                                              FilledButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx, true),
-                                                child: const Text('Remove'),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                        if (ok == true && context.mounted) {
-                                          await context
-                                              .read<TrackerProvider>()
-                                              .removeHubConnection(id);
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              const SnackBar(
-                                                content: Text('Hub removed'),
-                                                behavior:
-                                                    SnackBarBehavior.floating,
-                                              ),
+                                      onTap: () {
+                                        context.push('/hub/${Uri.encodeComponent(id)}');
+                                      },
+                                      trailing: PopupMenuButton<String>(
+                                        tooltip: 'Hub actions',
+                                        onSelected: (value) async {
+                                          if (value == 'rename') {
+                                            await _renameHub(
+                                              context,
+                                              trackerProvider,
+                                              id,
+                                            );
+                                          } else if (value == 'remove') {
+                                            await _removeHub(
+                                              context,
+                                              trackerProvider,
+                                              id,
                                             );
                                           }
-                                        }
-                                      },
+                                        },
+                                        itemBuilder: (context) => const [
+                                          PopupMenuItem<String>(
+                                            value: 'rename',
+                                            child: Text('Rename'),
+                                          ),
+                                          PopupMenuItem<String>(
+                                            value: 'remove',
+                                            child: Text('Remove'),
+                                          ),
+                                        ],
+                                        child: Icon(
+                                          LucideIcons.ellipsisVertical,
+                                          color: Theme.of(context)
+                                              .iconTheme
+                                              .color
+                                              ?.withValues(alpha: 0.72),
+                                          size: 18,
+                                        ),
+                                      ),
                                     ),
                                   ),
                               ],
@@ -234,6 +328,7 @@ class SettingsScreen extends StatelessWidget {
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    Widget? trailing,
   }) {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
@@ -264,11 +359,12 @@ class SettingsScreen extends StatelessWidget {
           subtitle,
           style: textTheme.bodySmall?.copyWith(fontSize: 13),
         ),
-        trailing: Icon(
-          LucideIcons.chevronRight,
-          color: theme.iconTheme.color?.withValues(alpha: 0.72),
-          size: 18,
-        ),
+        trailing: trailing ??
+            Icon(
+              LucideIcons.chevronRight,
+              color: theme.iconTheme.color?.withValues(alpha: 0.72),
+              size: 18,
+            ),
         onTap: onTap,
       ),
     );

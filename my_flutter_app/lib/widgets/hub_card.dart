@@ -70,6 +70,54 @@ class HubCard extends StatelessWidget {
     );
   }
 
+  Future<void> _renameHub(
+    BuildContext context,
+    TrackerProvider provider,
+  ) async {
+    final controller = TextEditingController(text: displayName);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Rename hub'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Hub name',
+            hintText: 'Enter a hub name',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+    if (newName == null || !context.mounted) return;
+
+    final cleaned = newName.trim();
+    if (cleaned.isEmpty || cleaned == displayName) return;
+
+    await provider.renameHub(hubBleId, cleaned);
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Hub renamed to $cleaned'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -147,6 +195,15 @@ class HubCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Rename hub',
+                    onPressed: () => _renameHub(context, provider),
+                    icon: Icon(
+                      LucideIcons.pencilLine,
+                      size: 18,
+                      color: theme.colorScheme.primary,
                     ),
                   ),
                   IconButton(
