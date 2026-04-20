@@ -131,7 +131,7 @@ class HubCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final provider = context.read<TrackerProvider>();
     final summary = provider.getHubStatusSummary(hubBleId);
-    final connectionStatus = provider.getHubConnectionStatus(hubBleId);
+    final connectionStatus = provider.getHubUiConnectionStatus(hubBleId);
     final hasTrackers = trackerCount > 0;
     final isConnecting = connectionStatus == HubConnectionStatus.connecting;
     final isConnected = connectionStatus == HubConnectionStatus.connected;
@@ -139,20 +139,41 @@ class HubCard extends StatelessWidget {
     final Color statusColor;
     final String statusLabel;
     final IconData statusIcon;
-    if (isConnected) {
+    final bool headerShowConnectingLoader;
+
+    if (!hasTrackers) {
+      // No tags registered — do not use "Disconnected" (that reads like dead hardware).
+      if (isConnecting) {
+        statusColor = theme.colorScheme.primary;
+        statusLabel = 'Connecting to hub...';
+        statusIcon = LucideIcons.loader;
+        headerShowConnectingLoader = true;
+      } else if (isConnected) {
+        statusColor = const Color(0xFF0D9488);
+        statusLabel = 'Ready — add tags';
+        statusIcon = LucideIcons.radioTower;
+        headerShowConnectingLoader = false;
+      } else {
+        statusColor = theme.colorScheme.primary;
+        statusLabel = 'No trackers yet';
+        statusIcon = LucideIcons.tags;
+        headerShowConnectingLoader = false;
+      }
+    } else if (isConnected) {
       statusColor = const Color(0xFF16A34A);
       statusLabel = 'Connected';
       statusIcon = LucideIcons.badgeCheck;
+      headerShowConnectingLoader = false;
     } else if (isConnecting) {
       statusColor = theme.colorScheme.primary;
       statusLabel = 'Connecting...';
       statusIcon = LucideIcons.loader;
+      headerShowConnectingLoader = true;
     } else {
-      statusColor = hasTrackers
-          ? const Color(0xFFEA580C)
-          : const Color(0xFFDC2626);
+      statusColor = const Color(0xFFEA580C);
       statusLabel = 'Disconnected';
       statusIcon = LucideIcons.circleOff;
+      headerShowConnectingLoader = false;
     }
 
     final borderColor =
@@ -199,7 +220,7 @@ class HubCard extends StatelessWidget {
                       statusColor: statusColor,
                       statusIcon: statusIcon,
                       statusLabel: statusLabel,
-                      isConnecting: isConnecting,
+                      isConnecting: headerShowConnectingLoader,
                       onCopy: () => _copyId(context),
                       onRename: () => _renameHub(context, provider),
                       onRemove: () => _confirmRemoveHub(context, provider),
@@ -337,11 +358,13 @@ class _Header extends StatelessWidget {
               const SizedBox(height: 6),
               Row(
                 children: [
-                  _StatusPill(
-                    color: statusColor,
-                    icon: statusIcon,
-                    label: statusLabel,
-                    isConnecting: isConnecting,
+                  Expanded(
+                    child: _StatusPill(
+                      color: statusColor,
+                      icon: statusIcon,
+                      label: statusLabel,
+                      isConnecting: isConnecting,
+                    ),
                   ),
                 ],
               ),
@@ -476,13 +499,13 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
           if (isConnecting)
             SizedBox(
@@ -496,12 +519,17 @@ class _StatusPill extends StatelessWidget {
           else
             Icon(icon, size: 12, color: color),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.2,
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
+                height: 1.2,
+              ),
             ),
           ),
         ],

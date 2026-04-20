@@ -21,11 +21,13 @@ class _HubTrackersScreenState extends State<HubTrackersScreen> {
   List<PendingTracker> _live = [];
   bool _streamError = false;
   bool _refreshing = false;
+  bool _disposed = false;
   Timer? _liveDebounce;
   List<PendingTracker>? _livePending;
+  late TrackerProvider _provider;
 
   Future<void> _startDedicatedSession() async {
-    final p = context.read<TrackerProvider>();
+    final p = _provider;
     if (!await p.prepareForDedicatedHubSession()) {
       if (mounted) setState(() => _streamError = true);
       return;
@@ -44,7 +46,7 @@ class _HubTrackersScreenState extends State<HubTrackersScreen> {
       _live = [];
     });
     try {
-      final p = context.read<TrackerProvider>();
+      final p = _provider;
       if (!await p.prepareForDedicatedHubSession()) {
         if (mounted) setState(() => _streamError = true);
         return;
@@ -61,6 +63,7 @@ class _HubTrackersScreenState extends State<HubTrackersScreen> {
   @override
   void initState() {
     super.initState();
+    _provider = context.read<TrackerProvider>();
     Future.microtask(() async {
       if (!mounted) return;
       try {
@@ -72,12 +75,12 @@ class _HubTrackersScreenState extends State<HubTrackersScreen> {
   }
 
   void _onLive(List<PendingTracker> list) {
-    if (!mounted) return;
+    if (_disposed || !mounted) return;
     _livePending = list;
     _liveDebounce?.cancel();
     _liveDebounce = Timer(const Duration(milliseconds: 250), () {
       _liveDebounce = null;
-      if (!mounted) return;
+      if (_disposed || !mounted) return;
       final next = _livePending;
       if (next == null) return;
       setState(() => _live = List<PendingTracker>.from(next));
@@ -86,12 +89,12 @@ class _HubTrackersScreenState extends State<HubTrackersScreen> {
 
   @override
   void dispose() {
+    _disposed = true;
     _liveDebounce?.cancel();
-    final p = context.read<TrackerProvider>();
     unawaited(
       Future<void>(() async {
-        await p.stopDedicatedHubStream();
-        await p.startBackgroundScanning();
+        await _provider.stopDedicatedHubStream();
+        await _provider.startBackgroundScanning();
       }),
     );
     super.dispose();
