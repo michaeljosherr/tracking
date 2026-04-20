@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:my_flutter_app/core/ble_service.dart';
 import 'package:my_flutter_app/core/distance_kalman_filter.dart';
 import 'package:my_flutter_app/core/device_heading_listener.dart';
+import 'package:my_flutter_app/core/notifications_service.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
@@ -50,9 +51,21 @@ class HubCalibrationResult {
 
 class TrackerProvider with ChangeNotifier {
   final List<Tracker> _trackers = [];
-  final List<Alert> _alerts = List.from(mockAlerts);
+  final List<Alert> _alerts = [];
   final _uuid = const Uuid();
   final _ble = BleService();
+
+  // --- Hub alert bookkeeping -------------------------------------------------
+  /// Timers that fire a "disconnected" alert if the hub stays offline for a
+  /// grace period (prevents spam from background hub rotation).
+  final Map<String, Timer> _hubDisconnectAlertTimers = {};
+  /// Hubs currently considered "announced as connected" — used to decide
+  /// whether we need to fire a new connected-alert on reconnection.
+  final Set<String> _hubCurrentlyAnnouncedConnected = {};
+  /// Hubs that have successfully connected at least once during this app run.
+  /// Used to pick "detected" (first time) vs "reconnected" wording.
+  final Set<String> _hubEverConnectedThisSession = {};
+  static const Duration _hubDisconnectGrace = Duration(seconds: 12);
 
   bool _isScanningHubs = false;
   List<DiscoveredHub> _discoveredHubs = [];
@@ -511,6 +524,12 @@ class TrackerProvider with ChangeNotifier {
     _savedHubBleIds.remove(hubBleId);
     _hubStatuses.remove(hubBleId.trim());
     _hubNames.remove(hubBleId.trim());
+    _cancelPendingHubAlertBookkeeping(hubBleId.trim());
+    // Drop old alerts about this hub so the user isn't haunted by a hub they
+    // intentionally removed.
+    _alerts.removeWhere(
+      (a) => a.isHub && a.trackerId == hubBleId.trim(),
+    );
     for (final t in _trackers.where((x) => x.bleAddress == hubBleId)) {
       if (t.serialNumber != null) {
         _distanceFiltersBySerial.remove(t.serialNumber!);
@@ -692,6 +711,13 @@ class TrackerProvider with ChangeNotifier {
       print('[TrackerProvider] Error stopping background scan: $e');
     }
 
+    // Cancel any pending "disconnect" alerts; this isn't a real outage, the
+    // user (or app teardown) asked us to stop scanning.
+    for (final key in _hubDisconnectAlertTimers.keys.toList()) {
+      _hubDisconnectAlertTimers.remove(key)?.cancel();
+    }
+    _hubCurrentlyAnnouncedConnected.clear();
+
     for (final hubBleId in _hubStatuses.keys.toList()) {
       _hubStatuses[hubBleId] = HubConnectionStatus.disconnected;
     }
@@ -706,7 +732,89 @@ class TrackerProvider with ChangeNotifier {
     final key = hubBleId.trim();
     if (_hubStatuses[key] == status) return;
     _hubStatuses[key] = status;
+    _maybeEmitHubAlertForTransition(key, status);
     notifyListeners();
+  }
+
+  void _maybeEmitHubAlertForTransition(
+    String key,
+    HubConnectionStatus status,
+  ) {
+    switch (status) {
+      case HubConnectionStatus.connected:
+        // Any pending "disconnected" alert is now obsolete.
+        _hubDisconnectAlertTimers.remove(key)?.cancel();
+        if (_hubCurrentlyAnnouncedConnected.contains(key)) {
+          // We already told the user this hub is up; nothing new to say.
+          return;
+        }
+        final isReconnect = _hubEverConnectedThisSession.contains(key);
+        _hubEverConnectedThisSession.add(key);
+        _hubCurrentlyAnnouncedConnected.add(key);
+        final name = getHubDisplayName(key, fallbackName: 'Hub');
+        _pushAlert(
+          Alert(
+            id: _uuid.v4(),
+            trackerId: key,
+            trackerName: name,
+            type: isReconnect ? 'hub-reconnected' : 'hub-connected',
+            message: isReconnect
+                ? '$name has reconnected.'
+                : '$name has been detected.',
+            timestamp: DateTime.now(),
+            acknowledged: false,
+            category: 'hub',
+          ),
+        );
+        break;
+      case HubConnectionStatus.disconnected:
+        // Only fire a disconnect alert if we'd previously announced the hub as
+        // connected. Otherwise this is just a failed connection attempt and we
+        // stay silent.
+        if (!_hubCurrentlyAnnouncedConnected.contains(key)) return;
+        _hubDisconnectAlertTimers.remove(key)?.cancel();
+        _hubDisconnectAlertTimers[key] = Timer(_hubDisconnectGrace, () {
+          _hubDisconnectAlertTimers.remove(key);
+          // If we've reconnected in the meantime, skip.
+          if (_hubStatuses[key] != HubConnectionStatus.disconnected) return;
+          if (!_hubCurrentlyAnnouncedConnected.contains(key)) return;
+          _hubCurrentlyAnnouncedConnected.remove(key);
+          final name = getHubDisplayName(key, fallbackName: 'Hub');
+          _pushAlert(
+            Alert(
+              id: _uuid.v4(),
+              trackerId: key,
+              trackerName: name,
+              type: 'hub-disconnected',
+              message: '$name has been disconnected.',
+              timestamp: DateTime.now(),
+              acknowledged: false,
+              category: 'hub',
+            ),
+          );
+          notifyListeners();
+        });
+        break;
+      case HubConnectionStatus.connecting:
+        // Don't alert on connecting — noisy during background rotation.
+        break;
+    }
+  }
+
+  void _pushAlert(Alert alert) {
+    _alerts.add(alert);
+    // Keep the most recent 80 to avoid unbounded growth.
+    if (_alerts.length > 80) {
+      _alerts.removeRange(0, _alerts.length - 80);
+    }
+    // Fire-and-forget a system notification so the user still sees this even
+    // when the app is backgrounded.
+    unawaited(NotificationsService.instance.showAlert(alert));
+  }
+
+  void _cancelPendingHubAlertBookkeeping(String key) {
+    _hubDisconnectAlertTimers.remove(key)?.cancel();
+    _hubCurrentlyAnnouncedConnected.remove(key);
   }
 
   Future<bool> pingTracker(String trackerId) async {

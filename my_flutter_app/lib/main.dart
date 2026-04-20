@@ -1,16 +1,42 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:my_flutter_app/core/auth_provider.dart';
 import 'package:my_flutter_app/core/app_preferences_provider.dart';
 import 'package:my_flutter_app/core/bluetooth_status_provider.dart';
+import 'package:my_flutter_app/core/notifications_service.dart';
 import 'package:my_flutter_app/core/router.dart';
 import 'package:my_flutter_app/core/app_themes.dart';
 import 'package:my_flutter_app/core/theme_provider.dart';
 import 'package:my_flutter_app/core/tracker_provider.dart';
 import 'package:my_flutter_app/widgets/bluetooth_gate.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await NotificationsService.instance.initialize(
+    onTap: _handleNotificationTap,
+  );
   runApp(const MyApp());
+}
+
+void _handleNotificationTap(String? payload) {
+  if (payload == null || payload.isEmpty) return;
+  final ctx = rootNavigatorKey.currentContext;
+  if (ctx == null) return;
+
+  if (payload.startsWith('hub:')) {
+    final hubBleId = payload.substring(4);
+    if (hubBleId.isEmpty) return;
+    GoRouter.of(ctx).push('/hub/${Uri.encodeComponent(hubBleId)}');
+    return;
+  }
+
+  if (payload.startsWith('tracker:')) {
+    final trackerId = payload.substring(8);
+    if (trackerId.isEmpty) return;
+    GoRouter.of(ctx).push('/tracker/$trackerId');
+    return;
+  }
 }
 
 class MyApp extends StatefulWidget {
@@ -24,6 +50,15 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    // If the app was launched from a tapped notification, handle it after the
+    // first frame so the router is ready.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final payload =
+          NotificationsService.instance.consumePendingLaunchPayload();
+      if (payload != null) {
+        _handleNotificationTap(payload);
+      }
+    });
   }
 
   @override

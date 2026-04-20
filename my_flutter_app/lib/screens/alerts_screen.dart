@@ -24,7 +24,7 @@ class AlertsScreen extends StatelessWidget {
           children: [
             const AppTopBar(
               title: 'Alerts',
-              subtitle: 'Review recent tracker events and jump to details.',
+                  subtitle: 'Review recent hub and tracker events and jump to details.',
             ),
             Expanded(
               child: ListView(
@@ -135,7 +135,7 @@ class AlertsScreen extends StatelessWidget {
             ),
             SizedBox(height: 8),
             Text(
-              'Trackers are operating normally. New alerts will appear here automatically.',
+              'Hubs and trackers are operating normally. New alerts will appear here automatically.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: theme.textTheme.bodyMedium?.color,
@@ -159,11 +159,12 @@ class AlertsScreen extends StatelessWidget {
 
     switch (alert.type) {
       case 'disconnected':
+      case 'hub-disconnected':
         accentColor = const Color(0xFFDC2626);
         surfaceColor = isDark
             ? accentColor.withValues(alpha: 0.14)
             : const Color(0xFFFEF2F2);
-        icon = LucideIcons.wifiOff;
+        icon = alert.isHub ? LucideIcons.radioTower : LucideIcons.wifiOff;
         break;
       case 'out-of-range':
         accentColor = const Color(0xFFEA580C);
@@ -171,6 +172,20 @@ class AlertsScreen extends StatelessWidget {
             ? accentColor.withValues(alpha: 0.14)
             : const Color(0xFFFFF7ED);
         icon = LucideIcons.mapPinOff;
+        break;
+      case 'hub-connected':
+        accentColor = const Color(0xFF2563EB);
+        surfaceColor = isDark
+            ? accentColor.withValues(alpha: 0.14)
+            : const Color(0xFFEFF6FF);
+        icon = LucideIcons.radioTower;
+        break;
+      case 'hub-reconnected':
+        accentColor = const Color(0xFF16A34A);
+        surfaceColor = isDark
+            ? accentColor.withValues(alpha: 0.14)
+            : const Color(0xFFF0FDF4);
+        icon = LucideIcons.radioTower;
         break;
       case 'reconnected':
       default:
@@ -195,7 +210,16 @@ class AlertsScreen extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () => context.push('/tracker/${alert.trackerId}'),
+        onTap: () {
+          if (!alert.acknowledged) {
+            context.read<TrackerProvider>().acknowledgeAlert(alert.id);
+          }
+          if (alert.isHub) {
+            context.push('/hub/${Uri.encodeComponent(alert.trackerId)}');
+          } else {
+            context.push('/tracker/${alert.trackerId}');
+          }
+        },
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
