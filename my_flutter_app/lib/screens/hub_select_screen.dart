@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:my_flutter_app/core/ble_service.dart';
@@ -31,18 +30,25 @@ class _HubSelectScreenState extends State<HubSelectScreen> with RouteAware {
   Timer? _scanDebounce;
   bool _routeAwareSubscribed = false;
 
-  void _scheduleScan() {
+  void _scheduleScan({Duration debounce = const Duration(milliseconds: 160)}) {
     _scanDebounce?.cancel();
-    _scanDebounce = Timer(const Duration(milliseconds: 160), () {
+    if (debounce.inMilliseconds == 0) {
+      // Scan immediately without debounce
       if (!mounted) return;
       unawaited(context.read<TrackerProvider>().scanForHubs());
-    });
+    } else {
+      _scanDebounce = Timer(debounce, () {
+        if (!mounted) return;
+        unawaited(context.read<TrackerProvider>().scanForHubs());
+      });
+    }
   }
 
   @override
   void initState() {
     super.initState();
-    _scheduleScan();
+    // Scan immediately when page loads - don't debounce
+    _scheduleScan(debounce: Duration.zero);
   }
 
   @override
@@ -62,20 +68,33 @@ class _HubSelectScreenState extends State<HubSelectScreen> with RouteAware {
   void dispose() {
     _scanDebounce?.cancel();
     appRouteObserver.unsubscribe(this);
-    final p = context.read<TrackerProvider>();
-    unawaited(p.startBackgroundScanning());
+    // Note: Don't use context.read() here - widget is deactivated
+    // Background scanning will be managed by TrackerProvider lifecycle
     super.dispose();
   }
 
   /// Fires when a route pushed on top of hub select (e.g. add trackers) is popped.
   @override
   void didPopNext() {
-    _scheduleScan();
+    // When returning from hub trackers screen (after hub reset), scan immediately
+    // without debounce to quickly rediscover the hub that just restarted advertising.
+    // Add small delay to ensure dedicated hub stream has stopped before scanning.
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        _scheduleScan(debounce: Duration.zero);
+      }
+    });
   }
 
-  void _openHub(DiscoveredHub hub) {
-    final encoded = Uri.encodeComponent(hub.remoteId);
-    context.push('/hubs/trackers?hubId=$encoded');
+  void _openHub(DiscoveredHub hub) async {
+    final provider = context.read<TrackerProvider>();
+    final navigator = Navigator.of(context);
+    
+    // Remember this hub connection using raw BLE ID
+    await provider.rememberHubConnection(hub.remoteId);
+    
+    // Navigate back to dashboard
+    navigator.pop();
   }
 
   @override
