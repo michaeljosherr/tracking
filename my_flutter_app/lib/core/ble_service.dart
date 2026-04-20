@@ -114,6 +114,9 @@ class BleService {
 
   bool _dedicatedHubActive = false;
   Future<void>? _dedicatedHubFuture;
+  void Function(String hubBleId)? _backgroundHubConnectingCallback;
+  void Function(String hubBleId)? _backgroundHubConnectedCallback;
+  void Function(String hubBleId)? _backgroundHubDisconnectedCallback;
 
   StreamSubscription<List<int>>? _hubNotifySubscription;
   StreamSubscription<BluetoothConnectionState>? _hubConnectionSubscription;
@@ -507,6 +510,9 @@ class BleService {
   Future<void> startContinuousScanning({
     required Function(List<PendingTracker>) onTrackerUpdate,
     required List<String> Function() hubBleIds,
+    void Function(String hubBleId)? onHubConnecting,
+    void Function(String hubBleId)? onHubConnected,
+    void Function(String hubBleId)? onHubDisconnected,
   }) async {
     // If rotation is already running, return without touching the connection.
     // (Calling [stopDedicatedHubStream] here would disconnect the active
@@ -526,6 +532,9 @@ class BleService {
     _isContinuousScanRunning = true;
     _continuousScanCallback = onTrackerUpdate;
     _backgroundHubIds = hubBleIds;
+    _backgroundHubConnectingCallback = onHubConnecting;
+    _backgroundHubConnectedCallback = onHubConnected;
+    _backgroundHubDisconnectedCallback = onHubDisconnected;
     _activeTrackers.clear();
 
     _hubSessionFuture = _runBackgroundHubRotationLoop();
@@ -654,6 +663,36 @@ class BleService {
     }
   }
 
+  Future<void> _primeBackgroundHubScannerCache(String hubBleId) async {
+    final want = hubBleId.trim();
+    final alreadyCached = FlutterBluePlus.lastScanResults.any(
+      (r) => scanResultIsHub(r) && r.device.remoteId.toString() == want,
+    );
+    if (alreadyCached) return;
+
+    try {
+      await FlutterBluePlus.stopScan();
+    } catch (_) {}
+    try {
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 3),
+        continuousUpdates: true,
+        withServices: [hubServiceGuid],
+      );
+      for (var i = 0; i < 12; i++) {
+        final found = FlutterBluePlus.lastScanResults.any(
+          (r) => scanResultIsHub(r) && r.device.remoteId.toString() == want,
+        );
+        if (found) break;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+    } finally {
+      try {
+        await FlutterBluePlus.stopScan();
+      } catch (_) {}
+    }
+  }
+
   /// Prefer the [ScanResult.device] from the last scan so the OS BLE cache is warm.
   BluetoothDevice _hubDeviceForId(String hubBleId) {
     final want = hubBleId.trim();
@@ -676,7 +715,13 @@ class BleService {
 
     BluetoothDevice? hub;
     try {
+      if (!primeScannerCache) {
+        _backgroundHubConnectingCallback?.call(hubBleId);
+      }
       await _primeHubScannerCache(dedicatedAddScreen: primeScannerCache);
+      if (!primeScannerCache) {
+        await _primeBackgroundHubScannerCache(hubBleId);
+      }
 
       if (!shouldContinue()) return;
 
@@ -692,7 +737,10 @@ class BleService {
 
       hub ??= _hubDeviceForId(hubBleId);
 
-      await hub.connect(timeout: const Duration(seconds: 15), mtu: 512);
+      await hub.connect(
+        timeout: Duration(seconds: primeScannerCache ? 15 : 6),
+        mtu: 512,
+      );
       if (!shouldContinue()) {
         await hub.disconnect();
         return;
@@ -708,6 +756,9 @@ class BleService {
       _connectedHub = hub;
       _hubRx = pair.rx;
       _hubTx = pair.tx;
+      if (!primeScannerCache) {
+        _backgroundHubConnectedCallback?.call(hubBleId);
+      }
 
       await pair.tx.setNotifyValue(true);
 
@@ -752,12 +803,18 @@ class BleService {
       _hubRx = null;
       _hubTx = null;
       _hubLineBuffer = '';
+      if (!primeScannerCache) {
+        _backgroundHubDisconnectedCallback?.call(hubBleId);
+      }
     } catch (e) {
       print('[BleService] Hub session error: $e');
       _stopHubRssiPolling();
       try {
         if (hub != null && hub.isConnected) await hub.disconnect();
       } catch (_) {}
+      if (!primeScannerCache) {
+        _backgroundHubDisconnectedCallback?.call(hubBleId);
+      }
     }
   }
 
@@ -765,6 +822,9 @@ class BleService {
     _isContinuousScanRunning = false;
     _continuousScanCallback = null;
     _backgroundHubIds = null;
+    _backgroundHubConnectingCallback = null;
+    _backgroundHubConnectedCallback = null;
+    _backgroundHubDisconnectedCallback = null;
 
     await _disconnectHub();
 
@@ -847,15 +907,16 @@ class BleService {
           _hubRx != null &&
           _hubTx != null &&
           _connectedHub!.isConnected) {
-        return _pingUsingCharacteristics(
+        return _pingWithRetry(
           _hubRx!,
           _hubTx!,
           serialNumber,
         );
       }
 
+      await _primeBackgroundHubScannerCache(hubBleAddress);
       final hub = BluetoothDevice.fromId(hubBleAddress);
-      await hub.connect(timeout: const Duration(seconds: 15), mtu: 512);
+      await hub.connect(timeout: const Duration(seconds: 8), mtu: 512);
       final services = await hub.discoverServices();
       final pair = _findUartCharacteristics(services);
       if (pair == null) {
@@ -864,7 +925,7 @@ class BleService {
         return false;
       }
 
-      final ok = await _pingUsingCharacteristics(
+      final ok = await _pingWithRetry(
         pair.rx,
         pair.tx,
         serialNumber,
@@ -876,6 +937,17 @@ class BleService {
       print('[BleService] Ping error: $e');
       return false;
     }
+  }
+
+  Future<bool> _pingWithRetry(
+    BluetoothCharacteristic rx,
+    BluetoothCharacteristic tx,
+    String serialNumber,
+  ) async {
+    final first = await _pingUsingCharacteristics(rx, tx, serialNumber);
+    if (first) return true;
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    return _pingUsingCharacteristics(rx, tx, serialNumber);
   }
 
   Future<bool> _pingUsingCharacteristics(
@@ -905,12 +977,13 @@ class BleService {
     });
 
     await tx.setNotifyValue(true);
+    await Future<void>.delayed(const Duration(milliseconds: 120));
 
-    final cmd = utf8.encode('PING:$serialNumber');
+    final cmd = utf8.encode('PING:$serialNumber\n');
     await rx.write(cmd, withoutResponse: false);
 
     final success = await completer.future
-        .timeout(const Duration(seconds: 4), onTimeout: () => false);
+        .timeout(const Duration(seconds: 5), onTimeout: () => false);
 
     await sub.cancel();
     return success;

@@ -28,13 +28,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   @override
-  void dispose() {
-    // Stop background scanning when dashboard unloads
-    context.read<TrackerProvider>().stopBackgroundScanning();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Consumer<TrackerProvider>(
       builder: (context, trackerProvider, child) {

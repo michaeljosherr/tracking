@@ -102,6 +102,7 @@ class _HubPageState extends State<HubPage> with SingleTickerProviderStateMixin {
               _RadarTabContent(trackers: hubTrackers),
               // Trackers tab
               _TrackersTabContent(
+                hubBleId: widget.hubBleId,
                 trackers: filteredTrackers,
                 allTrackers: hubTrackers,
                 searchController: _searchController,
@@ -114,7 +115,7 @@ class _HubPageState extends State<HubPage> with SingleTickerProviderStateMixin {
           floatingActionButton: _tabController.index == 1
               ? FloatingActionButton(
                   onPressed: () {
-                    context.push('/hubs/select');
+                    context.push('/hubs/trackers?hubId=${Uri.encodeComponent(widget.hubBleId)}');
                   },
                   tooltip: 'Add tracker to this hub',
                   child: const Icon(LucideIcons.plus),
@@ -174,12 +175,14 @@ class _RadarTabContent extends StatelessWidget {
 }
 
 class _TrackersTabContent extends StatefulWidget {
+  final String hubBleId;
   final List<Tracker> trackers;
   final List<Tracker> allTrackers;
   final TextEditingController searchController;
   final Function(String) onSearchChanged;
 
   const _TrackersTabContent({
+    required this.hubBleId,
     required this.trackers,
     required this.allTrackers,
     required this.searchController,
@@ -263,6 +266,16 @@ class _TrackersTabContentState extends State<_TrackersTabContent> {
                       style: theme.textTheme.bodySmall,
                       textAlign: TextAlign.center,
                     ),
+                    if (widget.searchQuery.isEmpty) ...[
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          context.push('/hubs/trackers?hubId=${Uri.encodeComponent(widget.hubBleId)}');
+                        },
+                        icon: const Icon(LucideIcons.plus, size: 18),
+                        label: const Text('Add Trackers'),
+                      ),
+                    ],
                   ],
                 ),
               ),

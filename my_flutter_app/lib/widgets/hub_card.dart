@@ -33,13 +33,65 @@ class HubCard extends StatelessWidget {
     }
   }
 
+  Future<void> _confirmRemoveHub(
+    BuildContext context,
+    TrackerProvider provider,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove hub?'),
+        content: const Text(
+          'This removes the hub card and deletes all trackers registered to this hub on this device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true || !context.mounted) return;
+
+    await provider.removeHubConnection(hubBleId);
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$displayName removed'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final provider = context.read<TrackerProvider>();
     final summary = provider.getHubStatusSummary(hubBleId);
+    final connectionStatus = provider.getHubConnectionStatus(hubBleId);
     final hasTrackers = trackerCount > 0;
     final allConnected = summary.disconnected == 0 && summary.outOfRange == 0 && summary.connected > 0;
+    final isConnecting = connectionStatus == HubConnectionStatus.connecting;
+    final isConnected = connectionStatus == HubConnectionStatus.connected;
+    final statusColor = isConnected
+        ? const Color(0xFF16A34A)
+        : isConnecting
+            ? theme.colorScheme.primary
+            : hasTrackers
+                ? const Color(0xFFEA580C)
+                : const Color(0xFFDC2626);
+    final statusLabel = isConnected
+        ? 'Connected'
+        : isConnecting
+            ? 'Connecting...'
+            : 'Disconnected';
 
     return Material(
       color: theme.cardColor,
@@ -66,11 +118,9 @@ class HubCard extends StatelessWidget {
                     height: 12,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: allConnected && hasTrackers
+                      color: allConnected && hasTrackers && isConnected
                           ? const Color(0xFF16A34A)
-                          : hasTrackers
-                              ? const Color(0xFFEA580C)
-                              : const Color(0xFFDC2626),
+                          : statusColor,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -99,12 +149,59 @@ class HubCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                  IconButton(
+                    tooltip: 'Remove hub',
+                    onPressed: () => _confirmRemoveHub(context, provider),
+                    icon: Icon(
+                      LucideIcons.trash2,
+                      size: 18,
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
                   Icon(
                     LucideIcons.chevronRight,
                     size: 20,
                     color: theme.colorScheme.primary,
                   ),
                 ],
+              ),
+
+              const SizedBox(height: 12),
+
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: isConnecting
+                          ? CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: theme.colorScheme.primary,
+                            )
+                          : Icon(
+                              isConnected
+                                  ? LucideIcons.badgeCheck
+                                  : LucideIcons.circleOff,
+                              size: 16,
+                              color: statusColor,
+                            ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      statusLabel,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: statusColor,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
               ),
 
               const SizedBox(height: 12),

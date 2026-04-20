@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:my_flutter_app/core/ble_service.dart';
@@ -69,8 +68,8 @@ class _HubSelectScreenState extends State<HubSelectScreen> with RouteAware {
   void dispose() {
     _scanDebounce?.cancel();
     appRouteObserver.unsubscribe(this);
-    final p = context.read<TrackerProvider>();
-    unawaited(p.startBackgroundScanning());
+    // Note: Don't use context.read() here - widget is deactivated
+    // Background scanning will be managed by TrackerProvider lifecycle
     super.dispose();
   }
 
@@ -87,9 +86,15 @@ class _HubSelectScreenState extends State<HubSelectScreen> with RouteAware {
     });
   }
 
-  void _openHub(DiscoveredHub hub) {
-    final encoded = Uri.encodeComponent(hub.remoteId);
-    context.push('/hubs/trackers?hubId=$encoded');
+  void _openHub(DiscoveredHub hub) async {
+    final provider = context.read<TrackerProvider>();
+    final navigator = Navigator.of(context);
+    
+    // Remember this hub connection using raw BLE ID
+    await provider.rememberHubConnection(hub.remoteId);
+    
+    // Navigate back to dashboard
+    navigator.pop();
   }
 
   @override

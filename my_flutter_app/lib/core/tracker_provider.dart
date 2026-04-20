@@ -20,6 +20,12 @@ enum SerialRegistrationOutcome {
   invalid,
 }
 
+enum HubConnectionStatus {
+  connecting,
+  connected,
+  disconnected,
+}
+
 class TrackerProvider with ChangeNotifier {
   final List<Tracker> _trackers = [];
   final List<Alert> _alerts = List.from(mockAlerts);
@@ -29,6 +35,7 @@ class TrackerProvider with ChangeNotifier {
   bool _isScanningHubs = false;
   List<DiscoveredHub> _discoveredHubs = [];
   final Set<String> _savedHubBleIds = {};
+  final Map<String, HubConnectionStatus> _hubStatuses = {};
 
   bool _isBackgroundScanning = false;
   final Set<String> _pingingDevices = {};
@@ -74,6 +81,10 @@ class TrackerProvider with ChangeNotifier {
   int get disconnectedCount =>
       _trackers.where((t) => t.status == TrackerStatus.disconnected).length;
 
+  HubConnectionStatus getHubConnectionStatus(String hubBleId) {
+    return _hubStatuses[hubBleId.trim()] ?? HubConnectionStatus.disconnected;
+  }
+
   /// Get trackers scoped to a specific hub
   List<Tracker> getTrackersForHub(String hubBleId) {
     return _trackers
@@ -83,7 +94,7 @@ class TrackerProvider with ChangeNotifier {
 
   /// Get all hubs (by their BLE IDs) that have trackers
   List<String> getAllHubIds() {
-    final hubIds = <String>{};
+    final hubIds = <String>{..._savedHubBleIds};
     for (final t in _trackers) {
       if (t.bleAddress != null && t.bleAddress!.isNotEmpty) {
         hubIds.add(t.bleAddress!);
@@ -197,6 +208,12 @@ class TrackerProvider with ChangeNotifier {
         if (t.bleAddress != null) {
           _savedHubBleIds.add(t.bleAddress!);
         }
+      }
+      for (final hubBleId in _savedHubBleIds) {
+        _hubStatuses.putIfAbsent(
+          hubBleId.trim(),
+          () => HubConnectionStatus.disconnected,
+        );
       }
     } catch (e) {
       print('[TrackerProvider] Error loading hub ids: $e');
@@ -350,6 +367,10 @@ class TrackerProvider with ChangeNotifier {
   Future<void> rememberHubConnection(String hubBleId) async {
     if (_savedHubBleIds.contains(hubBleId)) return;
     _savedHubBleIds.add(hubBleId);
+    _hubStatuses.putIfAbsent(
+      hubBleId.trim(),
+      () => HubConnectionStatus.disconnected,
+    );
     await _saveHubIds();
     notifyListeners();
   }
@@ -360,6 +381,7 @@ class TrackerProvider with ChangeNotifier {
     await stopBackgroundScanning();
 
     _savedHubBleIds.remove(hubBleId);
+    _hubStatuses.remove(hubBleId.trim());
     for (final t in _trackers.where((x) => x.bleAddress == hubBleId)) {
       if (t.serialNumber != null) {
         _distanceEmaBySerial.remove(t.serialNumber!);
@@ -397,12 +419,25 @@ class TrackerProvider with ChangeNotifier {
     }
 
     _isBackgroundScanning = true;
+    for (final hubBleId in _distinctHubBleIdsForBackground()) {
+      _hubStatuses[hubBleId.trim()] = HubConnectionStatus.connecting;
+    }
+    notifyListeners();
     print('[TrackerProvider] ✓ Background hub rotation for ${_trackers.length} tracker(s)');
 
     try {
       await _ble.startContinuousScanning(
         onTrackerUpdate: _onContinuousScanUpdate,
         hubBleIds: _distinctHubBleIdsForBackground,
+        onHubConnecting: (hubBleId) {
+          _setHubConnectionStatus(hubBleId, HubConnectionStatus.connecting);
+        },
+        onHubConnected: (hubBleId) {
+          _setHubConnectionStatus(hubBleId, HubConnectionStatus.connected);
+        },
+        onHubDisconnected: (hubBleId) {
+          _setHubConnectionStatus(hubBleId, HubConnectionStatus.disconnected);
+        },
       );
 
       _offlineCheckTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
@@ -522,6 +557,20 @@ class TrackerProvider with ChangeNotifier {
       print('[TrackerProvider] Error stopping background scan: $e');
     }
 
+    for (final hubBleId in _hubStatuses.keys.toList()) {
+      _hubStatuses[hubBleId] = HubConnectionStatus.disconnected;
+    }
+
+    notifyListeners();
+  }
+
+  void _setHubConnectionStatus(
+    String hubBleId,
+    HubConnectionStatus status,
+  ) {
+    final key = hubBleId.trim();
+    if (_hubStatuses[key] == status) return;
+    _hubStatuses[key] = status;
     notifyListeners();
   }
 
