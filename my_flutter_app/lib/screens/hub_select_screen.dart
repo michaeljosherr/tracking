@@ -123,21 +123,44 @@ class _HubSelectScreenState extends State<HubSelectScreen> with RouteAware {
                   ),
                   onPressed: scanning
                       ? null
-                      : () => provider.scanForHubs(),
+                      : () => unawaited(provider.scanForHubs()),
                 ),
               ),
             ],
           ),
-          body: scanning
+          body: scanning && hubs.isEmpty
               ? _buildScanning(theme)
-              : hubs.isEmpty
+              : !scanning && hubs.isEmpty
                   ? _buildEmpty(context, provider)
                   : ListView.separated(
                       key: ValueKey<String>(selectedKey),
                       padding: const EdgeInsets.all(16),
-                      itemCount: hubs.length,
+                      itemCount: hubs.length + (scanning ? 1 : 0),
                       separatorBuilder: (_, i) => const SizedBox(height: 12),
                       itemBuilder: (context, i) {
+                        if (i == hubs.length) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Still scanning…',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          );
+                        }
                         final h = hubs[i];
                         return Card(
                           elevation: 0,

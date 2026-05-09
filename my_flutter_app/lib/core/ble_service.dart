@@ -1,32 +1,58 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:my_flutter_app/core/kalman_filter.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
 
 // ============================================================================
-// Hub + tracker protocol (esp_hubBLEWifi_trackerWifi / esp32_hub.ino)
+// Hub + tracker BLE protocol (mirrors esp_hubBLEWifi_trackerWifi/esp32_hub.ino)
+// ============================================================================
+//
+// The hub advertises a Nordic UART service. Once connected we subscribe to
+// the TX characteristic and receive newline-delimited tracker telemetry of
+// the form:
+//
+//   TRACKER:esp32_indiv:<serial>:RSSI:<rssi>:DISTANCE:<meters>:IP:<ip>
+//
+// Commands (e.g. PING:<serial>) are written to the RX characteristic and the
+// hub responds asynchronously over TX with a `PING_RESULT:<serial>:<status>`
+// line.
+//
+// Design goals (matches the Python desktop GUI esp32_hub_gui.py which is
+// known to keep up with 40+ trackers without dropping the connection):
+//
+//   * Hold ONE persistent BLE connection to the active hub. No background
+//     rotation or speculative disconnect/reconnect cycles — those are what
+//     caused the Flutter app to drop while the hub was healthy.
+//   * Request HIGH connection priority right after connect. Default Android
+//     intervals (~30-50ms) cannot drain the hub's burst of ~40 notifications
+//     every 3s and the link gets terminated. HIGH brings it down to ~7-15ms.
+//   * Keep a serial->state map and emit aggregated snapshots on a timer
+//     (mirrors Python's `_emit_snapshot()` loop) instead of forwarding every
+//     single notification. Avoids overwhelming the UI thread.
+//   * Stale-timeout per tracker (9s, same as Python default) so trackers
+//     that disappear from the hub feed stop being treated as live without
+//     having to drop the BLE link.
+//   * If the user has more than one saved hub, rotate through them but only
+//     after the current connection is actually lost — never voluntarily.
 // ============================================================================
 
-/// Hub GAP name (BLE advertising)
 const String hubBleGapName = 'ESP32_TRACKER_HUB';
-
-/// Nordic UART–style service used by the hub
 const String hubServiceUuidStr = '6E400001-B5A3-F393-E0A9-E50E24DCCA9E';
 const String hubRxUuidStr = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E';
 const String hubTxUuidStr = '6E400003-B5A3-F393-E0A9-E50E24DCCA9E';
 
 final Guid hubServiceGuid = Guid(hubServiceUuidStr);
 
-/// Telemetry line from hub TX notifications:
-/// `TRACKER:esp32_indiv:<serial>:RSSI:<rssi>:DISTANCE:<meters>:IP:<ip>`
 final RegExp _hubTrackerLine = RegExp(
   r'^TRACKER:esp32_indiv:([^:]+):RSSI:(-?\d+):DISTANCE:([\d.]+):IP:([0-9.]+)\s*$',
 );
 
 // ============================================================================
-// Configuration (distance fallbacks when only RSSI is available)
+// Defaults for distance estimation. Same constants as Python GUI defaults.
 // ============================================================================
 
 const double TX_POWER_DBM = -65;
@@ -39,49 +65,61 @@ const double KALMAN_PROCESS_NOISE = 0.01;
 const double KALMAN_MEASUREMENT_NOISE = 2.5;
 const double KALMAN_INITIAL_UNCERTAINTY = 10.0;
 
-// ============================================================================
-// Tracker Data (Kalman on Wi‑Fi RSSI; hub also merges phone↔hub BLE for display distance)
-// ============================================================================
-
-class TrackerData {
-  final String deviceId;
-  final String serialNumber;
-  final String bleAddress;
-  late int rssi;
-  late double rssiFiltered;
-  late double distance;
-  late DateTime lastUpdated;
-  final KalmanFilter kalmanFilter;
-  final List<double> rssiHistory = [];
-
-  TrackerData({
-    required this.deviceId,
+/// Per-tracker live state held in [BleService] while a hub session is active.
+/// Mirrors Python's `_rows` + `_last_seen_ts` + `_distance_filters` maps.
+class _DetectedTracker {
+  _DetectedTracker({
     required this.serialNumber,
-    required this.bleAddress,
+    required this.hubBleId,
     required int initialRssi,
     required double initialDistance,
   })  : rssi = initialRssi,
         rssiFiltered = initialRssi.toDouble(),
         distance = initialDistance,
-        lastUpdated = DateTime.now(),
-        kalmanFilter = KalmanFilter(
+        ip = '',
+        lastSeenMs = DateTime.now().millisecondsSinceEpoch,
+        kalman = KalmanFilter(
           processNoise: KALMAN_PROCESS_NOISE,
           measurementNoise: KALMAN_MEASUREMENT_NOISE,
           initialUncertainty: KALMAN_INITIAL_UNCERTAINTY,
         );
 
-  void updateRssi(int newRssi) {
-    rssi = newRssi;
-    rssiFiltered = kalmanFilter.update(newRssi.toDouble());
-    lastUpdated = DateTime.now();
+  final String serialNumber;
+  final String hubBleId;
+  final KalmanFilter kalman;
+  final List<double> rssiHistory = [];
+
+  int rssi;
+  double rssiFiltered;
+  double distance;
+  String ip;
+  int lastSeenMs;
+
+  void updateFromHubLine({required int rssi, required double distance, required String ip}) {
+    this.rssi = rssi;
+    rssiFiltered = kalman.update(rssi.toDouble());
+    this.distance = distance;
+    this.ip = ip;
+    lastSeenMs = DateTime.now().millisecondsSinceEpoch;
     if (rssiHistory.length > 100) {
       rssiHistory.removeAt(0);
     }
     rssiHistory.add(rssiFiltered);
   }
 
-  void updateDistance(double newDistance) {
-    distance = newDistance;
+  PendingTracker toPending() {
+    final signal = (100 + rssiFiltered).clamp(0.0, 100.0).toInt();
+    return PendingTracker(
+      deviceId: 'esp32_indiv',
+      signalStrength: signal,
+      discovered: DateTime.fromMillisecondsSinceEpoch(lastSeenMs),
+      serialNumber: serialNumber,
+      bleAddress: hubBleId,
+      rssi: rssi,
+      rssiFiltered: rssiFiltered,
+      distance: distance,
+      rssiHistory: List<double>.from(rssiHistory),
+    );
   }
 }
 
@@ -98,101 +136,113 @@ class DiscoveredHub {
   final int rssi;
 }
 
-/// BLE: connect to hub(s), consume TX notifications, parse tracker lines.
+/// Singleton BLE coordinator.
+///
+/// Two top-level operating modes share the same persistent-connection loop:
+///
+///   * Background mode: started by [startContinuousScanning], used for the
+///     dashboard. Keeps a connection to one of the user's saved hubs alive
+///     and emits `PendingTracker` snapshots on a timer.
+///   * Dedicated mode: started by [startDedicatedHubStream], used by the
+///     "Add trackers" screen. Same loop but pinned to one hub id and primes
+///     a discovery scan first so the OS BLE cache is warm.
 class BleService {
   static final BleService _instance = BleService._internal();
+  factory BleService() => _instance;
+  BleService._internal();
+
+  // --- Tunable constants -----------------------------------------------------
+
+  /// How long to keep a tracker as "online" after its last hub TX line.
+  /// Matches Python's `stale_timeout_ms` default.
+  static const Duration _trackerStale = Duration(milliseconds: 9000);
+
+  /// Periodic snapshot cadence — same as Python's `poll_interval_s`.
+  static const Duration _emitInterval = Duration(milliseconds: 400);
+
+  /// Backoff after a session ends before we attempt to reconnect or rotate.
+  static const Duration _reconnectBackoff = Duration(milliseconds: 1200);
+
+  /// Used by [pingTrackerOnHub] to avoid stomping the dedicated/continuous
+  /// session right after we tore it down for a one-shot ping connect.
+  static const Duration _hubPingBleGap = Duration(milliseconds: 2200);
+
+  // --- Distance config -------------------------------------------------------
 
   double _txPower = TX_POWER_DBM;
   double _pathLoss = FREE_SPACE_PATH_LOSS;
   int _rssiThreshold = RSSI_THRESHOLD;
 
-  final Map<String, TrackerData> _activeTrackers = {};
-
-  bool _isContinuousScanRunning = false;
-  Function(List<PendingTracker>)? _continuousScanCallback;
-  List<String> Function()? _backgroundHubIds;
-
-  bool _dedicatedHubActive = false;
-  Future<void>? _dedicatedHubFuture;
-  void Function(String hubBleId)? _backgroundHubConnectingCallback;
-  void Function(String hubBleId)? _backgroundHubConnectedCallback;
-  void Function(String hubBleId)? _backgroundHubDisconnectedCallback;
-
-  StreamSubscription<List<int>>? _hubNotifySubscription;
-  StreamSubscription<BluetoothConnectionState>? _hubConnectionSubscription;
-  Future<void>? _hubSessionFuture;
-  String _hubLineBuffer = '';
-
-  BluetoothDevice? _connectedHub;
-  BluetoothCharacteristic? _hubRx;
-  BluetoothCharacteristic? _hubTx;
-
-  /// flutter_blue_plus enforces ~2s between GATT connects per device on Android.
-  final Map<String, DateTime> _lastTransientHubDisconnectUtc = {};
-  Future<void> _pingSerialTail = Future<void>.value();
-
-  static const Duration _hubPingBleGap = Duration(milliseconds: 2200);
-
-  Future<void> _waitTransientHubPingGap(String hubBleAddress) async {
-    final key = hubBleAddress.trim();
-    final last = _lastTransientHubDisconnectUtc[key];
-    if (last == null) return;
-    final elapsed = DateTime.now().difference(last);
-    if (elapsed < _hubPingBleGap) {
-      await Future<void>.delayed(_hubPingBleGap - elapsed);
-    }
-  }
-
-  void _markTransientHubDisconnected(String hubBleAddress) {
-    _lastTransientHubDisconnectUtc[hubBleAddress.trim()] = DateTime.now();
-  }
-
-  factory BleService() {
-    return _instance;
-  }
-
-  BleService._internal();
-
   double get txPower => _txPower;
   double get pathLoss => _pathLoss;
   int get rssiThreshold => _rssiThreshold;
 
-  void setConfig({
-    double? txPower,
-    double? pathLoss,
-    int? rssiThreshold,
-  }) {
+  void setConfig({double? txPower, double? pathLoss, int? rssiThreshold}) {
     if (txPower != null) _txPower = txPower;
     if (pathLoss != null) _pathLoss = pathLoss;
     if (rssiThreshold != null) _rssiThreshold = rssiThreshold;
-    _resetRuntimeTrackingFilters();
+    // Mirror Python: clear filters so the new constants take effect right away.
+    _detected.clear();
   }
 
   void resetConfig() {
     _txPower = TX_POWER_DBM;
     _pathLoss = FREE_SPACE_PATH_LOSS;
     _rssiThreshold = RSSI_THRESHOLD;
-    _resetRuntimeTrackingFilters();
+    _detected.clear();
   }
 
-  /// Mirrors Python calibration behavior by resetting live filter state whenever
-  /// calibration constants change, so new measurements take effect immediately.
-  void _resetRuntimeTrackingFilters() {
-    _activeTrackers.clear();
-  }
+  // --- Active session state --------------------------------------------------
+
+  /// All trackers we've seen on the current hub session, keyed by serial.
+  /// Mirrors Python's `_rows` dictionary. Entries with `lastSeenMs` older than
+  /// [_trackerStale] are filtered out at emit time but kept around so a brief
+  /// dropout doesn't lose their RSSI history / Kalman state.
+  final Map<String, _DetectedTracker> _detected = {};
+  String _lineBuffer = '';
+
+  BluetoothDevice? _connectedHub;
+  String? _connectedHubId;
+  BluetoothCharacteristic? _hubRx;
+  BluetoothCharacteristic? _hubTx;
+
+  StreamSubscription<List<int>>? _txSubscription;
+  StreamSubscription<BluetoothConnectionState>? _connSubscription;
+  Timer? _emitTimer;
+
+  // Continuous (background) mode bookkeeping.
+  bool _backgroundActive = false;
+  Future<void>? _backgroundFuture;
+  void Function(List<PendingTracker>)? _backgroundCallback;
+  List<String> Function()? _backgroundHubIds;
+  void Function(String hubBleId)? _onHubConnecting;
+  void Function(String hubBleId)? _onHubConnected;
+  void Function(String hubBleId)? _onHubDisconnected;
+
+  // Dedicated (add-trackers) mode bookkeeping.
+  bool _dedicatedActive = false;
+  Future<void>? _dedicatedFuture;
+  String? _dedicatedHubId;
+  void Function(List<PendingTracker>)? _dedicatedCallback;
+
+  /// Used by [pingTrackerOnHub] to serialize its short BLE side-trips and
+  /// avoid clobbering the live monitoring connection.
+  Future<void> _pingSerialTail = Future<void>.value();
+  final Map<String, DateTime> _lastSidetripDisconnectUtc = {};
+
+  bool get isContinuousScanRunning => _backgroundActive;
+
+  // --- Helpers ---------------------------------------------------------------
 
   static bool uuidEquals(Guid a, String b) =>
       a.toString().toLowerCase() == b.toLowerCase();
 
-  /// Legacy: direct tracker advertisement name (BLE-only trackers).
+  /// Legacy helper: parse a tracker GAP name like `esp32_indiv_<serial>`.
   static ({String deviceId, String serialNumber})? parseDeviceName(String? name) {
-    if (name == null || !name.startsWith('esp32_indiv_')) {
-      return null;
-    }
-    const prefix = 'esp32_indiv_';
-    final serialNumber = name.substring(prefix.length);
-    if (serialNumber.isEmpty) return null;
-    return (deviceId: 'esp32_indiv', serialNumber: serialNumber);
+    if (name == null || !name.startsWith('esp32_indiv_')) return null;
+    final serial = name.substring('esp32_indiv_'.length);
+    if (serial.isEmpty) return null;
+    return (deviceId: 'esp32_indiv', serialNumber: serial);
   }
 
   static double calculateDistance(
@@ -203,46 +253,30 @@ class BleService {
     double maxDistance = MAX_DISTANCE_M,
   }) {
     if (rssi == 0) return 0.0;
-    final distance =
-        math.pow(10.0, (txPower - rssi) / (10 * pathLoss)).toDouble();
-    return distance.clamp(minDistance, maxDistance);
+    final d = math.pow(10.0, (txPower - rssi) / (10 * pathLoss)).toDouble();
+    return d.clamp(minDistance, maxDistance);
   }
 
   double calculateDistanceWithConfig(int rssi) {
-    return calculateDistance(
-      rssi,
-      txPower: _txPower,
-      pathLoss: _pathLoss,
-    );
+    return calculateDistance(rssi, txPower: _txPower, pathLoss: _pathLoss);
   }
 
-  /// Rough phone ↔ tag estimate when only (1) phone↔hub BLE range and (2) hub↔tag
-  /// Wi‑Fi range are known: assume the two legs meet at ~90° at the hub (third side
-  /// of a right triangle). Not exact, but aligns the UI with “distance from this
-  /// phone” better than showing hub↔tag alone.
-  static double combinePhoneHubAndHubTagLegs(
-    double phoneToHubM,
-    double hubToTagM,
-  ) {
+  /// Rough phone↔tag estimate when only phone↔hub and hub↔tag legs are known.
+  /// Treated as a right triangle. Kept for backwards compatibility — we no
+  /// longer use this in the hot path because it confuses calibration.
+  static double combinePhoneHubAndHubTagLegs(double phoneToHubM, double hubToTagM) {
     final a = phoneToHubM.clamp(0.05, 500.0);
     final b = hubToTagM.clamp(0.05, 500.0);
     return math.sqrt(a * a + b * b);
   }
 
   static bool scanResultIsHub(ScanResult r) {
-    final adv =
-        r.device.advName.isNotEmpty ? r.device.advName : r.device.platformName;
+    final adv = r.device.advName.isNotEmpty ? r.device.advName : r.device.platformName;
     final plat = r.device.platformName;
-    if (adv == hubBleGapName || plat == hubBleGapName) {
-      return true;
-    }
-    if (adv.contains('TRACKER_HUB')) {
-      return true;
-    }
+    if (adv == hubBleGapName || plat == hubBleGapName) return true;
+    if (adv.contains('TRACKER_HUB')) return true;
     for (final u in r.advertisementData.serviceUuids) {
-      if (uuidEquals(u, hubServiceUuidStr)) {
-        return true;
-      }
+      if (uuidEquals(u, hubServiceUuidStr)) return true;
     }
     return false;
   }
@@ -267,386 +301,484 @@ class BleService {
     for (final s in services) {
       if (!uuidEquals(s.uuid, hubServiceUuidStr)) continue;
       for (final c in s.characteristics) {
-        if (uuidEquals(c.uuid, hubRxUuidStr)) {
-          rx = c;
-        } else if (uuidEquals(c.uuid, hubTxUuidStr)) {
-          tx = c;
-        }
+        if (uuidEquals(c.uuid, hubRxUuidStr)) rx = c;
+        if (uuidEquals(c.uuid, hubTxUuidStr)) tx = c;
       }
     }
     if (rx == null || tx == null) return null;
     return (rx: rx, tx: tx);
   }
 
-  void _appendHubPayload(
-    List<int> value,
-    void Function(Map<String, String> parsed) onParsed,
-  ) {
-    _hubLineBuffer += utf8.decode(value, allowMalformed: true);
-    int nl;
-    while ((nl = _hubLineBuffer.indexOf('\n')) >= 0) {
-      final line = _hubLineBuffer.substring(0, nl);
-      _hubLineBuffer = _hubLineBuffer.substring(nl + 1);
-      final parsed = parseHubTrackerLine(line);
-      if (parsed != null) {
-        onParsed(parsed);
-      }
-    }
-  }
-
-  void _processParsedForPending(
-    Map<String, String> parsed,
-    String hubBleId,
-    List<PendingTracker> batch,
-  ) {
-    final serial = parsed['serial']!;
-    final rssi = int.tryParse(parsed['rssi'] ?? '') ?? -100;
-    // Hub firmware embeds DISTANCE using its own TX-power constants (often very
-    // different from [txPower] here), which makes meters disagree badly with the
-    // RSSI in the same line (e.g. -18 dBm but ~80 m). Always derive the hub↔tag
-    // leg from [rssi] with the same model as the rest of the app so the value
-    // matches what we show as RSSI.
-    final distFromHub = calculateDistanceWithConfig(rssi);
-
-    // Match Python desktop app: keep hub↔tag calibrated distance directly.
-    // Do not combine with phone↔hub leg, otherwise close-range calibration can
-    // still appear farther than the known calibration distance.
-
-    final trackerData = _activeTrackers.putIfAbsent(
-      serial,
-      () => TrackerData(
-        deviceId: 'esp32_indiv',
-        serialNumber: serial,
-        bleAddress: hubBleId,
-        initialRssi: rssi,
-        initialDistance: distFromHub,
-      ),
-    );
-
-    trackerData.updateRssi(rssi);
-    trackerData.updateDistance(distFromHub);
-
-    final displayDistance = distFromHub;
-
-    final signalStrength =
-        (100 + trackerData.rssiFiltered).clamp(0.0, 100.0).toInt();
-
-    batch.removeWhere((p) => p.serialNumber == serial);
-    batch.add(
-      PendingTracker(
-        deviceId: 'esp32_indiv',
-        signalStrength: signalStrength,
-        discovered: DateTime.now(),
-        serialNumber: serial,
-        bleAddress: hubBleId,
-        rssi: rssi,
-        rssiFiltered: trackerData.rssiFiltered,
-        distance: displayDistance,
-        rssiHistory: List.from(trackerData.rssiHistory),
-      ),
-    );
-  }
-
-  /// Scan for all advertising hubs (deduped by device id, strongest RSSI kept).
-  Future<List<DiscoveredHub>> scanForHubs({
-    Duration scanDuration = const Duration(seconds: 6),
-  }) async {
-    final out = <String, ScanResult>{};
+  Future<bool> isBluetoothAvailable() async {
     try {
-      try {
-        await FlutterBluePlus.stopScan();
-      } catch (_) {}
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-
-      if (!await isBluetoothAvailable() || !await isBluetoothOn()) {
-        return [];
-      }
-
-      await FlutterBluePlus.startScan(
-        timeout: scanDuration,
-        continuousUpdates: true,
-      );
-      await Future.delayed(scanDuration + const Duration(milliseconds: 150));
-      await FlutterBluePlus.stopScan();
-
-      for (final r in FlutterBluePlus.lastScanResults) {
-        if (!scanResultIsHub(r)) continue;
-        final id = r.device.remoteId.toString();
-        if (!out.containsKey(id) || r.rssi > out[id]!.rssi) {
-          out[id] = r;
-        }
-      }
-
-      final list = out.values.map((r) {
-        final name = r.device.advName.isNotEmpty
-            ? r.device.advName
-            : r.device.platformName;
-        return DiscoveredHub(
-          remoteId: r.device.remoteId.toString(),
-          displayName: name.isNotEmpty ? name : hubBleGapName,
-          rssi: r.rssi,
-        );
-      }).toList()
-        ..sort((a, b) => b.rssi.compareTo(a.rssi));
-
-      return list;
-    } catch (e) {
-      print('[BleService] scanForHubs error: $e');
-      return [];
+      return await FlutterBluePlus.isSupported;
+    } catch (_) {
+      return false;
     }
   }
 
-  Future<void> _disconnectHub() async {
-    await _hubNotifySubscription?.cancel();
-    _hubNotifySubscription = null;
-    await _hubConnectionSubscription?.cancel();
-    _hubConnectionSubscription = null;
-    _hubLineBuffer = '';
-    if (_connectedHub != null && _connectedHub!.isConnected) {
-      try {
-        await _connectedHub!.disconnect();
-      } catch (_) {}
-    }
-    _connectedHub = null;
-    _hubRx = null;
-    _hubTx = null;
-  }
-
-  /// One-shot: connect to [hubBleId], collect tracker lines, disconnect.
-  Future<List<PendingTracker>> scanTrackersOnHub({
-    required String hubBleId,
-    Duration listenDuration = const Duration(seconds: 5),
-  }) async {
+  Future<bool> isBluetoothOn() async {
     try {
-      _activeTrackers.clear();
+      final state = await FlutterBluePlus.adapterState.first;
+      return state == BluetoothAdapterState.on;
+    } catch (_) {
+      return false;
+    }
+  }
 
-      if (!await isBluetoothAvailable() || !await isBluetoothOn()) {
-        return [];
-      }
-
-      final hub = BluetoothDevice.fromId(hubBleId);
-      await hub.connect(
-        timeout: const Duration(seconds: 15),
-        mtu: 512,
-      );
-
-      final services = await hub.discoverServices();
-      final pair = _findUartCharacteristics(services);
-      if (pair == null) {
-        await hub.disconnect();
-        return [];
-      }
-
-      await pair.tx.setNotifyValue(true);
-
-      final result = <PendingTracker>[];
-
-      final sub = pair.tx.onValueReceived.listen((value) {
-        _appendHubPayload(value, (parsed) {
-          _processParsedForPending(parsed, hubBleId, result);
-        });
-      });
-
-      hub.cancelWhenDisconnected(sub);
-
-      await Future.delayed(listenDuration);
-
-      await sub.cancel();
-      await hub.disconnect();
-
-      return result;
+  Future<void> turnOnBluetooth() async {
+    try {
+      await FlutterBluePlus.turnOn();
     } catch (e) {
-      print('[BleService] scanTrackersOnHub error: $e');
-      return [];
-    } finally {
+      print('[BleService] turnOn error: $e');
     }
   }
 
   Future<void> stopScan() async {
     try {
       await FlutterBluePlus.stopScan();
+    } catch (_) {}
+  }
+
+  // --- Hub discovery ---------------------------------------------------------
+
+  /// Scan for advertising hubs.
+  ///
+  /// If [onProgress] is supplied, it receives an updated `DiscoveredHub`
+  /// list every time a new hub is seen during the scan window — that is
+  /// what makes the picker populate live instead of waiting the full
+  /// duration before showing anything. The returned future resolves with
+  /// the same final list when the scan completes.
+  ///
+  /// Note: we deliberately do NOT pass `withServices` to `startScan` here.
+  /// On some Android stacks that filter only matches devices whose primary
+  /// advertising packet (not scan response) lists the UUID; the firmware
+  /// puts it on the scan response, which would cause hubs to silently
+  /// disappear from results. The name + scan-response checks in
+  /// [scanResultIsHub] already filter out unrelated devices.
+  Future<List<DiscoveredHub>> scanForHubs({
+    Duration scanDuration = const Duration(seconds: 6),
+    void Function(List<DiscoveredHub>)? onProgress,
+  }) async {
+    StreamSubscription<List<ScanResult>>? sub;
+    try {
+      try {
+        await FlutterBluePlus.stopScan();
+      } catch (_) {}
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+
+      if (!await isBluetoothAvailable() || !await isBluetoothOn()) return [];
+
+      final byId = <String, DiscoveredHub>{};
+
+      List<DiscoveredHub> currentList() {
+        final list = byId.values.toList()
+          ..sort((a, b) => b.rssi.compareTo(a.rssi));
+        return list;
+      }
+
+      sub = FlutterBluePlus.scanResults.listen((results) {
+        var changed = false;
+        for (final r in results) {
+          if (!scanResultIsHub(r)) continue;
+          final id = r.device.remoteId.toString();
+          final name = r.device.advName.isNotEmpty
+              ? r.device.advName
+              : r.device.platformName;
+          final next = DiscoveredHub(
+            remoteId: id,
+            displayName: name.isNotEmpty ? name : hubBleGapName,
+            rssi: r.rssi,
+          );
+          final prev = byId[id];
+          if (prev == null ||
+              r.rssi > prev.rssi ||
+              prev.displayName != next.displayName) {
+            byId[id] = next;
+            changed = true;
+          }
+        }
+        if (changed && onProgress != null) {
+          onProgress(currentList());
+        }
+      });
+
+      await FlutterBluePlus.startScan(
+        timeout: scanDuration,
+        continuousUpdates: true,
+      );
+      await Future<void>.delayed(scanDuration + const Duration(milliseconds: 150));
+      try {
+        await FlutterBluePlus.stopScan();
+      } catch (_) {}
+
+      return currentList();
     } catch (e) {
-      print('[BleService] Error stopping scan: $e');
+      print('[BleService] scanForHubs error: $e');
+      return [];
+    } finally {
+      try {
+        await sub?.cancel();
+      } catch (_) {}
     }
   }
 
+  // --- Public entry points ---------------------------------------------------
+
+  /// Background dashboard monitor. Holds a persistent connection to whichever
+  /// hub from [hubBleIds] is currently reachable; rotates only on disconnect.
   Future<void> startContinuousScanning({
-    required Function(List<PendingTracker>) onTrackerUpdate,
+    required void Function(List<PendingTracker>) onTrackerUpdate,
     required List<String> Function() hubBleIds,
     void Function(String hubBleId)? onHubConnecting,
     void Function(String hubBleId)? onHubConnected,
     void Function(String hubBleId)? onHubDisconnected,
   }) async {
-    // If rotation is already running, return without touching the connection.
-    // (Calling [stopDedicatedHubStream] here would disconnect the active
-    // background session, then we'd hit this guard and return — leaving BLE dead
-    // and no hub telemetry on the dashboard.)
-    if (_isContinuousScanRunning) {
-      return;
-    }
+    if (_backgroundActive) return;
 
-    // End any dedicated add-trackers session before starting background rotation.
+    // Make sure no dedicated session is squatting on the BLE link first.
     await stopDedicatedHubStream();
 
-    if (!await isBluetoothAvailable() || !await isBluetoothOn()) {
-      return;
-    }
+    if (!await isBluetoothAvailable() || !await isBluetoothOn()) return;
 
-    _isContinuousScanRunning = true;
-    _continuousScanCallback = onTrackerUpdate;
+    _backgroundActive = true;
+    _backgroundCallback = onTrackerUpdate;
     _backgroundHubIds = hubBleIds;
-    _backgroundHubConnectingCallback = onHubConnecting;
-    _backgroundHubConnectedCallback = onHubConnected;
-    _backgroundHubDisconnectedCallback = onHubDisconnected;
-    _activeTrackers.clear();
+    _onHubConnecting = onHubConnecting;
+    _onHubConnected = onHubConnected;
+    _onHubDisconnected = onHubDisconnected;
 
-    _hubSessionFuture = _runBackgroundHubRotationLoop();
-    print('[BleService] Multi-hub background session started');
+    print('[BleService] Background hub monitor started');
+    _backgroundFuture = _runBackgroundLoop();
   }
 
-  Future<void> _runBackgroundHubRotationLoop() async {
-    while (_isContinuousScanRunning) {
-      final ids = _backgroundHubIds?.call() ?? [];
-      if (ids.isEmpty) {
-        await Future.delayed(const Duration(seconds: 2));
-        continue;
-      }
+  Future<void> stopContinuousScanning() async {
+    if (!_backgroundActive) return;
+    _backgroundActive = false;
 
-      for (final hubId in ids) {
-        if (!_isContinuousScanRunning) break;
+    await _tearDownActiveSession();
 
-        _activeTrackers.clear();
-        await _listenOneHubUntilDisconnect(
-          hubBleId: hubId,
-          onBatch: _continuousScanCallback,
-          shouldContinue: () => _isContinuousScanRunning,
-          primeScannerCache: false,
-        );
-
-        if (!_isContinuousScanRunning) break;
-        await Future.delayed(const Duration(milliseconds: 400));
+    if (_backgroundFuture != null) {
+      try {
+        await _backgroundFuture!.timeout(const Duration(seconds: 12));
+      } catch (e) {
+        print('[BleService] stopContinuousScanning: $e');
       }
     }
-
-    await _disconnectHub();
+    _backgroundFuture = null;
+    _backgroundCallback = null;
+    _backgroundHubIds = null;
+    _onHubConnecting = null;
+    _onHubConnected = null;
+    _onHubDisconnected = null;
+    _detected.clear();
   }
 
-  /// Live stream for a single hub (add-trackers screen). Mutually exclusive with background.
+  /// Live stream for the "add trackers" screen. Mutually exclusive with
+  /// [startContinuousScanning]; we tear the background loop down first so the
+  /// Android stack doesn't have to juggle two GATT clients.
   Future<void> startDedicatedHubStream(
     String hubBleId,
     void Function(List<PendingTracker>) onUpdate,
   ) async {
     await stopDedicatedHubStream();
-    _dedicatedHubActive = true;
-    _activeTrackers.clear();
-    _dedicatedHubFuture = _runDedicatedHubLoop(hubBleId, onUpdate);
-  }
-
-  Future<void> _runDedicatedHubLoop(
-    String hubBleId,
-    void Function(List<PendingTracker>) onUpdate,
-  ) async {
-    while (_dedicatedHubActive) {
-      onUpdate(<PendingTracker>[]);
-      _activeTrackers.clear();
-
-      var gotTelemetry = false;
-      void batchHandler(List<PendingTracker> list) {
-        if (list.isNotEmpty) gotTelemetry = true;
-        onUpdate(list);
-      }
-
-      await _listenOneHubUntilDisconnect(
-        hubBleId: hubBleId,
-        onBatch: batchHandler,
-        shouldContinue: () => _dedicatedHubActive,
-        primeScannerCache: true,
-      );
-
-      // Quick second session without another long scan if the first ended with no packets
-      // (stack race after disconnect, or hub BLE client slot timing).
-      if (_dedicatedHubActive && !gotTelemetry) {
-        await Future.delayed(const Duration(milliseconds: 650));
-        gotTelemetry = false;
-        await _listenOneHubUntilDisconnect(
-          hubBleId: hubBleId,
-          onBatch: batchHandler,
-          shouldContinue: () => _dedicatedHubActive,
-          primeScannerCache: false,
-        );
-      }
-
-      if (_dedicatedHubActive) {
-        await Future.delayed(const Duration(seconds: 1));
-      }
-    }
-    await _disconnectHub();
+    _dedicatedActive = true;
+    _dedicatedHubId = hubBleId;
+    _dedicatedCallback = onUpdate;
+    _detected.clear();
+    print('[BleService] Dedicated hub stream started for $hubBleId');
+    _dedicatedFuture = _runDedicatedLoop();
   }
 
   Future<void> stopDedicatedHubStream() async {
-    _dedicatedHubActive = false;
-    await _disconnectHub();
-    if (_dedicatedHubFuture != null) {
+    if (!_dedicatedActive) return;
+    _dedicatedActive = false;
+
+    await _tearDownActiveSession();
+
+    if (_dedicatedFuture != null) {
       try {
-        await _dedicatedHubFuture!.timeout(
-          const Duration(seconds: 12),
-          onTimeout: () {
-            print(
-              '[BleService] stopDedicatedHubStream: dedicated future timed out',
-            );
-          },
-        );
+        await _dedicatedFuture!.timeout(const Duration(seconds: 12));
       } catch (e) {
         print('[BleService] stopDedicatedHubStream: $e');
-      } finally {
-        await _disconnectHub();
       }
     }
-    _dedicatedHubFuture = null;
+    _dedicatedFuture = null;
+    _dedicatedHubId = null;
+    _dedicatedCallback = null;
+    _detected.clear();
   }
 
-  /// Android often requires a recent scan before [BluetoothDevice.connect] works
-  /// reliably (desktop Bleak scans first). [dedicatedAddScreen] uses a longer scan.
-  Future<void> _primeHubScannerCache({required bool dedicatedAddScreen}) async {
-    if (!dedicatedAddScreen) return;
-    try {
-      await FlutterBluePlus.stopScan();
-    } catch (_) {}
-    try {
-      await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 4),
-        continuousUpdates: true,
-        withServices: [hubServiceGuid],
+  /// One-shot helper retained for callers that want to grab a quick tracker
+  /// list without keeping the connection. Internally it uses the dedicated
+  /// stream and waits for a single emit.
+  Future<List<PendingTracker>> scanTrackersOnHub({
+    required String hubBleId,
+    Duration listenDuration = const Duration(seconds: 5),
+  }) async {
+    final completer = Completer<List<PendingTracker>>();
+    var snapshot = <PendingTracker>[];
+
+    await startDedicatedHubStream(hubBleId, (list) {
+      snapshot = list;
+    });
+
+    await Future<void>.delayed(listenDuration);
+    if (!completer.isCompleted) completer.complete(snapshot);
+
+    await stopDedicatedHubStream();
+    return completer.future;
+  }
+
+  // --- Inner loops -----------------------------------------------------------
+
+  Future<void> _runBackgroundLoop() async {
+    var rotateIndex = 0;
+    while (_backgroundActive) {
+      final ids = _backgroundHubIds?.call() ?? const <String>[];
+      if (ids.isEmpty) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        continue;
+      }
+
+      // Stable, deterministic rotation: walk the list in order. We only ever
+      // advance after a session ends (i.e. the hub disconnected), so a single
+      // healthy hub will keep its connection forever.
+      if (rotateIndex >= ids.length) rotateIndex = 0;
+      final hubId = ids[rotateIndex];
+      rotateIndex++;
+
+      _onHubConnecting?.call(hubId);
+      final ok = await _runHubSession(
+        hubBleId: hubId,
+        primeScannerCache: false,
+        onConnected: () => _onHubConnected?.call(hubId),
+        emit: (list) => _backgroundCallback?.call(list),
+        shouldContinue: () => _backgroundActive,
       );
-      await Future.delayed(const Duration(milliseconds: 3200));
+      _onHubDisconnected?.call(hubId);
+
+      if (!_backgroundActive) break;
+
+      // If this hub failed outright, try the next one quickly so we don't get
+      // stuck on a dead entry. Healthy disconnects (long sessions) get a full
+      // backoff so we don't thrash the radio.
+      await Future<void>.delayed(ok ? _reconnectBackoff : const Duration(milliseconds: 400));
+    }
+
+    await _tearDownActiveSession();
+  }
+
+  Future<void> _runDedicatedLoop() async {
+    while (_dedicatedActive) {
+      final hubId = _dedicatedHubId;
+      if (hubId == null) break;
+
+      // Reset the visible state so the UI shows "scanning" between sessions
+      // instead of stale rows from the previous attempt.
+      _detected.clear();
+      _dedicatedCallback?.call(const <PendingTracker>[]);
+
+      await _runHubSession(
+        hubBleId: hubId,
+        primeScannerCache: true,
+        onConnected: null,
+        emit: (list) => _dedicatedCallback?.call(list),
+        shouldContinue: () => _dedicatedActive,
+      );
+
+      if (!_dedicatedActive) break;
+      await Future<void>.delayed(_reconnectBackoff);
+    }
+
+    await _tearDownActiveSession();
+  }
+
+  /// Runs ONE persistent session against [hubBleId]. Returns once the link
+  /// drops (clean or otherwise). The bool return is `true` if we managed to
+  /// fully attach to the hub at least once during this call; it's used by the
+  /// caller to decide between "long backoff" (healthy hub that just dropped)
+  /// and "short backoff" (hub couldn't connect at all).
+  Future<bool> _runHubSession({
+    required String hubBleId,
+    required bool primeScannerCache,
+    required void Function()? onConnected,
+    required void Function(List<PendingTracker>) emit,
+    required bool Function() shouldContinue,
+  }) async {
+    BluetoothDevice? hub;
+    var attached = false;
+    try {
+      if (!shouldContinue()) return false;
+      await _primeHubScannerCache(longScan: primeScannerCache, target: hubBleId);
+      if (!shouldContinue()) return false;
+
+      hub = await _resolveHubDevice(hubBleId);
+
+      await hub.connect(
+        timeout: Duration(seconds: primeScannerCache ? 15 : 8),
+        mtu: 512,
+      );
+      if (!shouldContinue()) {
+        try {
+          await hub.disconnect();
+        } catch (_) {}
+        return false;
+      }
+
+      // HIGH connection priority is critical — without it, Android's default
+      // ~30-50ms interval cannot drain the hub's burst of ~40 notifications
+      // every 3s and the link gets terminated mid-burst.
+      await _requestHighPriority(hub);
+
+      final services = await hub.discoverServices();
+      final pair = _findUartCharacteristics(services);
+      if (pair == null) {
+        print('[BleService] Hub $hubBleId missing UART service');
+        try {
+          await hub.disconnect();
+        } catch (_) {}
+        return false;
+      }
+
+      _connectedHub = hub;
+      _connectedHubId = hubBleId;
+      _hubRx = pair.rx;
+      _hubTx = pair.tx;
+      _lineBuffer = '';
+
+      await pair.tx.setNotifyValue(true);
+      attached = true;
+      onConnected?.call();
+      print('[BleService] ✓ Hub session active: $hubBleId');
+
+      _txSubscription = pair.tx.onValueReceived.listen((value) {
+        _ingestPayload(value, hubBleId);
+      });
+      hub.cancelWhenDisconnected(_txSubscription!);
+
+      // Periodic emit timer mirrors the Python GUI's `_emit_snapshot()` loop.
+      // We aggregate the per-notification updates and push a snapshot at a
+      // fixed cadence so the UI doesn't get hammered when the hub bursts.
+      _emitTimer?.cancel();
+      _emitTimer = Timer.periodic(_emitInterval, (_) {
+        if (!shouldContinue()) return;
+        final snapshot = _buildSnapshot();
+        emit(snapshot);
+      });
+
+      // Wait until the hub drops us. flutter_blue_plus reports the initial
+      // disconnected state once before the connect completes, so we filter on
+      // the *current* connection state rather than firing on every event.
+      final completer = Completer<void>();
+      _connSubscription = hub.connectionState.listen((state) {
+        if (state == BluetoothConnectionState.disconnected) {
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      // Belt and braces: also exit if the caller stops the loop while we're
+      // mid-session.
+      Future<void> watchAbort() async {
+        while (!completer.isCompleted && shouldContinue()) {
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+        }
+        if (!completer.isCompleted) completer.complete();
+      }
+
+      unawaited(watchAbort());
+      await completer.future;
+      print('[BleService] Hub session ended: $hubBleId');
+    } catch (e) {
+      print('[BleService] Hub session error ($hubBleId): $e');
     } finally {
+      _emitTimer?.cancel();
+      _emitTimer = null;
       try {
-        await FlutterBluePlus.stopScan();
+        await _txSubscription?.cancel();
       } catch (_) {}
+      _txSubscription = null;
+      try {
+        await _connSubscription?.cancel();
+      } catch (_) {}
+      _connSubscription = null;
+      try {
+        if (hub != null && hub.isConnected) {
+          await hub.disconnect();
+        }
+      } catch (_) {}
+      _connectedHub = null;
+      _connectedHubId = null;
+      _hubRx = null;
+      _hubTx = null;
+      _lineBuffer = '';
+      // Push one last empty-or-stale snapshot so the UI doesn't keep
+      // displaying stuck "online" trackers after the hub drops.
+      try {
+        emit(_buildSnapshot());
+      } catch (_) {}
+    }
+    return attached;
+  }
+
+  Future<void> _requestHighPriority(BluetoothDevice hub) async {
+    if (kIsWeb) return;
+    try {
+      if (!Platform.isAndroid) return;
+    } catch (_) {
+      return;
+    }
+    try {
+      await hub.requestConnectionPriority(
+        connectionPriorityRequest: ConnectionPriority.high,
+      );
+    } catch (e) {
+      // Non-fatal: not all Android stacks honor this.
+      print('[BleService] requestConnectionPriority failed: $e');
     }
   }
 
-  Future<void> _primeBackgroundHubScannerCache(String hubBleId) async {
+  Future<BluetoothDevice> _resolveHubDevice(String hubBleId) async {
     final want = hubBleId.trim();
+    // Prefer a recently-scanned device — its OS BLE cache is warm.
+    for (final r in FlutterBluePlus.lastScanResults) {
+      if (!scanResultIsHub(r)) continue;
+      if (r.device.remoteId.toString() == want) return r.device;
+    }
+    try {
+      final bonded = await FlutterBluePlus.systemDevices([hubServiceGuid]);
+      for (final d in bonded) {
+        if (d.remoteId.toString() == want) return d;
+      }
+    } catch (_) {}
+    return BluetoothDevice.fromId(want);
+  }
+
+  Future<void> _primeHubScannerCache({
+    required bool longScan,
+    required String target,
+  }) async {
+    final want = target.trim();
     final alreadyCached = FlutterBluePlus.lastScanResults.any(
       (r) => scanResultIsHub(r) && r.device.remoteId.toString() == want,
     );
-    if (alreadyCached) return;
+    if (alreadyCached && !longScan) return;
 
     try {
       await FlutterBluePlus.stopScan();
     } catch (_) {}
     try {
       await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 3),
+        timeout: Duration(seconds: longScan ? 4 : 3),
         continuousUpdates: true,
         withServices: [hubServiceGuid],
       );
-      for (var i = 0; i < 12; i++) {
-        final found = FlutterBluePlus.lastScanResults.any(
+      final maxWaitMs = longScan ? 3200 : 1200;
+      for (var elapsed = 0; elapsed < maxWaitMs; elapsed += 100) {
+        final hit = FlutterBluePlus.lastScanResults.any(
           (r) => scanResultIsHub(r) && r.device.remoteId.toString() == want,
         );
-        if (found) break;
+        if (hit) break;
         await Future<void>.delayed(const Duration(milliseconds: 100));
       }
     } finally {
@@ -656,181 +788,83 @@ class BleService {
     }
   }
 
-  /// Prefer the [ScanResult.device] from the last scan so the OS BLE cache is warm.
-  BluetoothDevice _hubDeviceForId(String hubBleId) {
-    final want = hubBleId.trim();
-    for (final r in FlutterBluePlus.lastScanResults) {
-      if (!scanResultIsHub(r)) continue;
-      if (r.device.remoteId.toString() == want) {
-        return r.device;
+  // --- Notification ingest + snapshot building ------------------------------
+
+  void _ingestPayload(List<int> value, String hubBleId) {
+    _lineBuffer += utf8.decode(value, allowMalformed: true);
+    int nl;
+    while ((nl = _lineBuffer.indexOf('\n')) >= 0) {
+      final line = _lineBuffer.substring(0, nl);
+      _lineBuffer = _lineBuffer.substring(nl + 1);
+      final parsed = parseHubTrackerLine(line);
+      if (parsed != null) {
+        _absorbTrackerLine(parsed, hubBleId);
       }
     }
-    return BluetoothDevice.fromId(want);
   }
 
-  Future<void> _listenOneHubUntilDisconnect({
-    required String hubBleId,
-    required void Function(List<PendingTracker>)? onBatch,
-    required bool Function() shouldContinue,
-    bool primeScannerCache = false,
-  }) async {
-    if (!shouldContinue()) return;
+  void _absorbTrackerLine(Map<String, String> parsed, String hubBleId) {
+    final serial = parsed['serial']!;
+    final rssi = int.tryParse(parsed['rssi'] ?? '') ?? -100;
+    final ip = parsed['ip'] ?? '';
 
-    BluetoothDevice? hub;
+    // Recompute distance with our calibration so what the UI shows tracks the
+    // RSSI we display rather than whatever fixed TX power the firmware used.
+    final distance = calculateDistanceWithConfig(rssi);
+
+    final entry = _detected.putIfAbsent(
+      serial,
+      () => _DetectedTracker(
+        serialNumber: serial,
+        hubBleId: hubBleId,
+        initialRssi: rssi,
+        initialDistance: distance,
+      ),
+    );
+    entry.updateFromHubLine(rssi: rssi, distance: distance, ip: ip);
+  }
+
+  /// Build a snapshot of every tracker still considered live. Mirrors the
+  /// Python GUI's `_emit_snapshot()` — drops anything stale beyond
+  /// [_trackerStale] but keeps the underlying entry around so a brief gap
+  /// doesn't blow away its Kalman state.
+  List<PendingTracker> _buildSnapshot() {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final out = <PendingTracker>[];
+    final stale = _trackerStale.inMilliseconds;
+    for (final entry in _detected.values) {
+      if (nowMs - entry.lastSeenMs > stale) continue;
+      out.add(entry.toPending());
+    }
+    return out;
+  }
+
+  Future<void> _tearDownActiveSession() async {
+    _emitTimer?.cancel();
+    _emitTimer = null;
     try {
-      if (!primeScannerCache) {
-        _backgroundHubConnectingCallback?.call(hubBleId);
-      }
-      await _primeHubScannerCache(dedicatedAddScreen: primeScannerCache);
-      if (!primeScannerCache) {
-        await _primeBackgroundHubScannerCache(hubBleId);
-      }
-
-      if (!shouldContinue()) return;
-
+      await _txSubscription?.cancel();
+    } catch (_) {}
+    _txSubscription = null;
+    try {
+      await _connSubscription?.cancel();
+    } catch (_) {}
+    _connSubscription = null;
+    if (_connectedHub != null) {
       try {
-        final bonded = await FlutterBluePlus.systemDevices([hubServiceGuid]);
-        for (final d in bonded) {
-          if (d.remoteId.toString() == hubBleId.trim()) {
-            hub = d;
-            break;
-          }
+        if (_connectedHub!.isConnected) {
+          await _connectedHub!.disconnect();
         }
       } catch (_) {}
-
-      hub ??= _hubDeviceForId(hubBleId);
-
-      await hub.connect(
-        timeout: Duration(seconds: primeScannerCache ? 15 : 6),
-        mtu: 512,
-      );
-      if (!shouldContinue()) {
-        await hub.disconnect();
-        return;
-      }
-
-      final services = await hub.discoverServices();
-      final pair = _findUartCharacteristics(services);
-      if (pair == null) {
-        await hub.disconnect();
-        return;
-      }
-
-      _connectedHub = hub;
-      _hubRx = pair.rx;
-      _hubTx = pair.tx;
-      if (!primeScannerCache) {
-        _backgroundHubConnectedCallback?.call(hubBleId);
-      }
-
-      await pair.tx.setNotifyValue(true);
-
-      final batch = <PendingTracker>[];
-
-      await _hubNotifySubscription?.cancel();
-      _hubNotifySubscription = pair.tx.onValueReceived.listen((value) {
-        if (!shouldContinue()) return;
-        _appendHubPayload(value, (parsed) {
-          _processParsedForPending(parsed, hubBleId, batch);
-          if (batch.isNotEmpty && onBatch != null) {
-            onBatch(List.from(batch));
-          }
-        });
-      });
-      hub.cancelWhenDisconnected(_hubNotifySubscription!);
-
-      final completer = Completer<void>();
-      var ignoreEarlyDisconnect = true;
-      Future<void>.delayed(const Duration(milliseconds: 450), () {
-        ignoreEarlyDisconnect = false;
-      });
-      _hubConnectionSubscription = hub.connectionState.listen((state) {
-        if (state != BluetoothConnectionState.disconnected) return;
-        if (ignoreEarlyDisconnect) return;
-        if (!completer.isCompleted) completer.complete();
-      });
-
-      await completer.future;
-
-      await _hubNotifySubscription?.cancel();
-      _hubNotifySubscription = null;
-      await _hubConnectionSubscription?.cancel();
-      _hubConnectionSubscription = null;
-      _connectedHub = null;
-      _hubRx = null;
-      _hubTx = null;
-      _hubLineBuffer = '';
-      if (!primeScannerCache) {
-        _backgroundHubDisconnectedCallback?.call(hubBleId);
-      }
-    } catch (e) {
-      print('[BleService] Hub session error: $e');
-      try {
-        if (hub != null && hub.isConnected) await hub.disconnect();
-      } catch (_) {}
-      if (!primeScannerCache) {
-        _backgroundHubDisconnectedCallback?.call(hubBleId);
-      }
     }
+    _connectedHub = null;
+    _connectedHubId = null;
+    _hubRx = null;
+    _hubTx = null;
+    _lineBuffer = '';
   }
 
-  Future<void> stopContinuousScanning() async {
-    _isContinuousScanRunning = false;
-    _continuousScanCallback = null;
-    _backgroundHubIds = null;
-    _backgroundHubConnectingCallback = null;
-    _backgroundHubConnectedCallback = null;
-    _backgroundHubDisconnectedCallback = null;
-
-    await _disconnectHub();
-
-    if (_hubSessionFuture != null) {
-      try {
-        await _hubSessionFuture!.timeout(
-          const Duration(seconds: 12),
-          onTimeout: () {
-            print(
-              '[BleService] stopContinuousScanning: hub session future timed out',
-            );
-          },
-        );
-      } catch (e) {
-        print('[BleService] stopContinuousScanning session: $e');
-      } finally {
-        await _disconnectHub();
-      }
-    }
-    _hubSessionFuture = null;
-
-    _activeTrackers.clear();
-  }
-
-  bool get isContinuousScanRunning => _isContinuousScanRunning;
-
-  Future<bool> isBluetoothAvailable() async {
-    try {
-      return await FlutterBluePlus.isSupported;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Future<bool> isBluetoothOn() async {
-    try {
-      final state = await FlutterBluePlus.adapterState.first;
-      return state == BluetoothAdapterState.on;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Future<void> turnOnBluetooth() async {
-    try {
-      await FlutterBluePlus.turnOn();
-    } catch (e) {
-      print('[BleService] Error turning on Bluetooth: $e');
-    }
-  }
+  // --- Ping -----------------------------------------------------------------
 
   Future<bool> pingTrackerOnHub({
     required String hubBleAddress,
@@ -841,53 +875,48 @@ class BleService {
     _pingSerialTail = gate.future;
     await prev;
     try {
-      await _waitTransientHubPingGap(hubBleAddress);
-      return await _pingTrackerOnHubUnserialized(
-        hubBleAddress: hubBleAddress,
-        serialNumber: serialNumber,
-      );
+      await _waitSidetripGap(hubBleAddress);
+      return await _pingImpl(hubBleAddress: hubBleAddress, serialNumber: serialNumber);
     } finally {
       gate.complete();
     }
   }
 
-  Future<bool> _pingTrackerOnHubUnserialized({
+  Future<bool> _pingImpl({
     required String hubBleAddress,
     required String serialNumber,
   }) async {
     try {
-      print('[BleService] Ping via hub $hubBleAddress serial=$serialNumber');
-
+      // Reuse the live monitoring connection if we're already attached to
+      // this hub — no need to drop and reconnect just for a ping.
       if (_connectedHub != null &&
-          _connectedHub!.remoteId.toString() == hubBleAddress &&
+          _connectedHubId != null &&
+          _connectedHubId!.trim().toUpperCase() == hubBleAddress.trim().toUpperCase() &&
           _hubRx != null &&
           _hubTx != null &&
           _connectedHub!.isConnected) {
-        return _pingWithRetry(
-          _hubRx!,
-          _hubTx!,
-          serialNumber,
-        );
+        return _pingWithRetry(_hubRx!, _hubTx!, serialNumber);
       }
 
-      await _primeBackgroundHubScannerCache(hubBleAddress);
-      final hub = BluetoothDevice.fromId(hubBleAddress);
+      // Otherwise do a one-shot connect.
+      await _primeHubScannerCache(longScan: false, target: hubBleAddress);
+      final hub = await _resolveHubDevice(hubBleAddress);
       await hub.connect(timeout: const Duration(seconds: 8), mtu: 512);
+      await _requestHighPriority(hub);
       final services = await hub.discoverServices();
       final pair = _findUartCharacteristics(services);
       if (pair == null) {
-        await hub.disconnect();
-        _markTransientHubDisconnected(hubBleAddress);
+        try {
+          await hub.disconnect();
+        } catch (_) {}
+        _markSidetrip(hubBleAddress);
         return false;
       }
-
-      final ok = await _pingWithRetry(
-        pair.rx,
-        pair.tx,
-        serialNumber,
-      );
-      await hub.disconnect();
-      _markTransientHubDisconnected(hubBleAddress);
+      final ok = await _pingWithRetry(pair.rx, pair.tx, serialNumber);
+      try {
+        await hub.disconnect();
+      } catch (_) {}
+      _markSidetrip(hubBleAddress);
       return ok;
     } catch (e) {
       print('[BleService] Ping error: $e');
@@ -900,48 +929,57 @@ class BleService {
     BluetoothCharacteristic tx,
     String serialNumber,
   ) async {
-    final first = await _pingUsingCharacteristics(rx, tx, serialNumber);
+    final first = await _pingOnce(rx, tx, serialNumber);
     if (first) return true;
     await Future<void>.delayed(const Duration(milliseconds: 350));
-    return _pingUsingCharacteristics(rx, tx, serialNumber);
+    return _pingOnce(rx, tx, serialNumber);
   }
 
-  Future<bool> _pingUsingCharacteristics(
+  Future<bool> _pingOnce(
     BluetoothCharacteristic rx,
     BluetoothCharacteristic tx,
     String serialNumber,
   ) async {
     final completer = Completer<bool>();
-    late StreamSubscription<List<int>> sub;
     var buffer = '';
-
+    StreamSubscription<List<int>>? sub;
     sub = tx.onValueReceived.listen((value) {
       buffer += utf8.decode(value, allowMalformed: true);
       while (true) {
         final nl = buffer.indexOf('\n');
         if (nl < 0) break;
-        final line = buffer.substring(0, nl);
+        final line = buffer.substring(0, nl).trim();
         buffer = buffer.substring(nl + 1);
-        final t = line.trim();
-        if (t.startsWith('PING_RESULT:$serialNumber:')) {
-          final rest = t.substring('PING_RESULT:$serialNumber:'.length);
-          if (!completer.isCompleted) {
-            completer.complete(rest == 'SUCCESS');
-          }
+        if (line.startsWith('PING_RESULT:$serialNumber:')) {
+          final rest = line.substring('PING_RESULT:$serialNumber:'.length);
+          if (!completer.isCompleted) completer.complete(rest == 'SUCCESS');
         }
       }
     });
 
-    await tx.setNotifyValue(true);
-    await Future<void>.delayed(const Duration(milliseconds: 120));
+    try {
+      await tx.setNotifyValue(true);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await rx.write(utf8.encode('PING:$serialNumber\n'), withoutResponse: false);
+      return await completer.future
+          .timeout(const Duration(seconds: 5), onTimeout: () => false);
+    } finally {
+      try {
+        await sub.cancel();
+      } catch (_) {}
+    }
+  }
 
-    final cmd = utf8.encode('PING:$serialNumber\n');
-    await rx.write(cmd, withoutResponse: false);
+  Future<void> _waitSidetripGap(String hubBleAddress) async {
+    final last = _lastSidetripDisconnectUtc[hubBleAddress.trim().toUpperCase()];
+    if (last == null) return;
+    final elapsed = DateTime.now().difference(last);
+    if (elapsed < _hubPingBleGap) {
+      await Future<void>.delayed(_hubPingBleGap - elapsed);
+    }
+  }
 
-    final success = await completer.future
-        .timeout(const Duration(seconds: 5), onTimeout: () => false);
-
-    await sub.cancel();
-    return success;
+  void _markSidetrip(String hubBleAddress) {
+    _lastSidetripDisconnectUtc[hubBleAddress.trim().toUpperCase()] = DateTime.now();
   }
 }
