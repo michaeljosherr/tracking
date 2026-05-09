@@ -480,12 +480,20 @@ class TrackerProvider with ChangeNotifier {
 
     try {
       _discoveredHubs = await _ble
-          .scanForHubs(scanDuration: duration)
+          .scanForHubs(
+            scanDuration: duration,
+            onProgress: (live) {
+              // Stream hubs into the picker the moment they appear,
+              // instead of waiting the full scan window before any show up.
+              _discoveredHubs = live;
+              notifyListeners();
+            },
+          )
           .timeout(
             const Duration(seconds: 35),
             onTimeout: () {
               print('[TrackerProvider] scanForHubs timed out');
-              return [];
+              return _discoveredHubs;
             },
           );
     } catch (e) {

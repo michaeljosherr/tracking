@@ -342,9 +342,25 @@ class BleService {
 
   // --- Hub discovery ---------------------------------------------------------
 
+  /// Scan for advertising hubs.
+  ///
+  /// If [onProgress] is supplied, it receives an updated `DiscoveredHub`
+  /// list every time a new hub is seen during the scan window — that is
+  /// what makes the picker populate live instead of waiting the full
+  /// duration before showing anything. The returned future resolves with
+  /// the same final list when the scan completes.
+  ///
+  /// Note: we deliberately do NOT pass `withServices` to `startScan` here.
+  /// On some Android stacks that filter only matches devices whose primary
+  /// advertising packet (not scan response) lists the UUID; the firmware
+  /// puts it on the scan response, which would cause hubs to silently
+  /// disappear from results. The name + scan-response checks in
+  /// [scanResultIsHub] already filter out unrelated devices.
   Future<List<DiscoveredHub>> scanForHubs({
     Duration scanDuration = const Duration(seconds: 6),
+    void Function(List<DiscoveredHub>)? onProgress,
   }) async {
+    StreamSubscription<List<ScanResult>>? sub;
     try {
       try {
         await FlutterBluePlus.stopScan();
@@ -353,34 +369,57 @@ class BleService {
 
       if (!await isBluetoothAvailable() || !await isBluetoothOn()) return [];
 
+      final byId = <String, DiscoveredHub>{};
+
+      List<DiscoveredHub> currentList() {
+        final list = byId.values.toList()
+          ..sort((a, b) => b.rssi.compareTo(a.rssi));
+        return list;
+      }
+
+      sub = FlutterBluePlus.scanResults.listen((results) {
+        var changed = false;
+        for (final r in results) {
+          if (!scanResultIsHub(r)) continue;
+          final id = r.device.remoteId.toString();
+          final name = r.device.advName.isNotEmpty
+              ? r.device.advName
+              : r.device.platformName;
+          final next = DiscoveredHub(
+            remoteId: id,
+            displayName: name.isNotEmpty ? name : hubBleGapName,
+            rssi: r.rssi,
+          );
+          final prev = byId[id];
+          if (prev == null ||
+              r.rssi > prev.rssi ||
+              prev.displayName != next.displayName) {
+            byId[id] = next;
+            changed = true;
+          }
+        }
+        if (changed && onProgress != null) {
+          onProgress(currentList());
+        }
+      });
+
       await FlutterBluePlus.startScan(
         timeout: scanDuration,
         continuousUpdates: true,
       );
       await Future<void>.delayed(scanDuration + const Duration(milliseconds: 150));
-      await FlutterBluePlus.stopScan();
+      try {
+        await FlutterBluePlus.stopScan();
+      } catch (_) {}
 
-      final byId = <String, ScanResult>{};
-      for (final r in FlutterBluePlus.lastScanResults) {
-        if (!scanResultIsHub(r)) continue;
-        final id = r.device.remoteId.toString();
-        if (!byId.containsKey(id) || r.rssi > byId[id]!.rssi) {
-          byId[id] = r;
-        }
-      }
-
-      return byId.values.map((r) {
-        final name = r.device.advName.isNotEmpty ? r.device.advName : r.device.platformName;
-        return DiscoveredHub(
-          remoteId: r.device.remoteId.toString(),
-          displayName: name.isNotEmpty ? name : hubBleGapName,
-          rssi: r.rssi,
-        );
-      }).toList()
-        ..sort((a, b) => b.rssi.compareTo(a.rssi));
+      return currentList();
     } catch (e) {
       print('[BleService] scanForHubs error: $e');
       return [];
+    } finally {
+      try {
+        await sub?.cancel();
+      } catch (_) {}
     }
   }
 
