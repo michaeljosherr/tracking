@@ -6,7 +6,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:my_flutter_app/core/ble_service.dart';
-import 'package:my_flutter_app/core/distance_kalman_filter.dart';
+import 'package:my_flutter_app/core/distance_filter_pipeline.dart';
 import 'package:my_flutter_app/core/device_heading_listener.dart';
 import 'package:my_flutter_app/core/notifications_service.dart';
 import 'package:my_flutter_app/models/mock_data.dart';
@@ -79,7 +79,7 @@ class TrackerProvider with ChangeNotifier {
 
   final Map<String, int> _autoBearingCloseStreak = {};
 
-  final Map<String, DistanceKalmanFilter> _distanceFiltersBySerial = {};
+  final Map<String, DistanceFilterPipeline> _distanceFiltersBySerial = {};
 
   static const double _autoBearingMaxDistanceM = 1.2;
   static const int _autoBearingMinRssiDbm = -58;
@@ -390,7 +390,7 @@ class TrackerProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void resetDistanceKalmanFilters() {
+  void resetDistanceFilters() {
     _distanceFiltersBySerial.clear();
     notifyListeners();
   }
@@ -709,7 +709,7 @@ class TrackerProvider with ChangeNotifier {
         if (rawDistance != null && serial.isNotEmpty) {
           final filter = _distanceFiltersBySerial.putIfAbsent(
             serial,
-            () => DistanceKalmanFilter(initialDistance: rawDistance),
+            () => DistanceFilterPipeline(initialDistance: rawDistance),
           );
           dist = filter.update(rawDistance);
         }

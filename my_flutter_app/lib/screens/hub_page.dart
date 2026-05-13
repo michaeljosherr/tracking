@@ -822,7 +822,7 @@ class _HubCalibrationSectionState extends State<_HubCalibrationSection> {
               TextButton.icon(
                 onPressed: () {
                   provider.resetScannerConfig();
-                  provider.resetDistanceKalmanFilters();
+                  provider.resetDistanceFilters();
                   setState(() => _lastResult = null);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -836,7 +836,7 @@ class _HubCalibrationSectionState extends State<_HubCalibrationSection> {
               ),
               TextButton.icon(
                 onPressed: () {
-                  provider.resetDistanceKalmanFilters();
+                  provider.resetDistanceFilters();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Distance Kalman filters reset'),
